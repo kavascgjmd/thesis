@@ -1,0 +1,108 @@
+:root {
+    --primary-color: #ff4f5a;
+    --primary-dark: #ff1f3b;
+    --primary-light: #ffe0e3;
+    --text-dark: #333;
+    --text-light: #666;
+    --background: #f8f8f8;
+    --white: #ffffff;
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.2);
+    --border-radius-sm: 6px;
+    --border-radius-md: 10px;
+    --max-width: 1200px;
+    --spacing-xs: 5px;
+    --spacing-sm: 10px;
+    --spacing-md: 15px;
+    --spacing-lg: 20px;
+    --spacing-xl: 30px;
+  }
+  
+  
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: 'Inter', Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-dark);
+    background-color: var(--background);
+  }
+   @keyframes fadeIn {
+   from {
+     opacity: 0;
+     transform: scale(0.95);
+   }
+   to {
+     opacity: 1;
+     transform: scale(1); }
+}
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modalBackdropFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-backdrop {
+  animation: modalBackdropFadeIn 0.2s ease-out;
+}
+
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5); /* Dimmed background */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: 8px;
+  width: 480px;
+  max-width: 90%;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  position: relative;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  color: #888;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.modal-close-button:hover {
+  color: #333;
+}
+

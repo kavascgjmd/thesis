@@ -1,0 +1,38 @@
+import { createUserTable } from './user';
+import { createDonorTable } from './donor';
+import { createNGOTable } from './ngo';
+import { createRecipientTable } from './recipient';
+import { createFoodDonationTable } from './foodDonation';
+import { createFoodRequestTable } from './foodRequest';
+import { createDeliveryTable } from './delivery';
+import { createChatTable } from './chat';
+import { createNotificationTable } from './notification';
+import { createCRMRecordTable } from './crmRecord';
+import { createERPRecordTable } from './erpRecord';
+import { createCartTable } from './cart';
+import { createCartItemsTable } from './cartItem';
+import { createOrdersTable } from './order';
+import { createDriverLocationsTable } from './driver_locations';
+import { createDeliveryRoutesTable } from './delivery_routes';
+import { createRoutePointsTable } from './route_points';
+import { createDriversTable } from './drivers';
+export async function createAllTables() {
+    await createDriverLocationsTable();
+    await createDeliveryRoutesTable();
+    await createRoutePointsTable();
+    await createCartTable();
+    await createCartItemsTable();
+    await createOrdersTable();
+    await createUserTable();
+    await createDonorTable();
+    await createNGOTable();
+    await createRecipientTable();
+    await createFoodDonationTable();
+    await createFoodRequestTable();
+    await createDeliveryTable();
+    await createChatTable();
+    await createNotificationTable();
+    await createCRMRecordTable();
+    await createERPRecordTable();
+    await createDriversTable();
+} 

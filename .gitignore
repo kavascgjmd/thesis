@@ -1,0 +1,4 @@
+frontend/realtime_food_donation/node_modules/
+backend/node_modules/
+backend/.env
+frontend/realtime_food_donation/.env

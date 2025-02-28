@@ -1,0 +1,47 @@
+.card {
+    background-color: #fff;
+    border-radius: 12px 12px 0 0; /* Rounded only at the top */
+    box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    width: 350px; /* Increased width */
+    text-align: left;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    margin: 0; /* Removed outer margin */
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important; /* Ensure no padding */
+    box-sizing: border-box; /* Ensure padding and border are included in the element's total width and height */
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.card img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    margin: 0; /* Removed inner spacing */
+    padding: 0; /* Ensure no padding is applied */
+    border: none;
+    display: block; /* Ensure the image doesn't have inline gaps */
+}
+
+.card-title {
+    font-size: 1.25rem;
+    font-weight: bold;
+    margin: 0 15px 5px; /* Adjusted top margin */
+    color: #222;
+    padding: 10px 0 0 0; /* Removed horizontal padding */
+}
+
+.card-description {
+    font-size: 1rem;
+    color: #555;
+    margin: 0 15px 15px;
+    line-height: 1.6;
+    background-color: #fff;
+    padding: 0; /* Ensure no padding is applied */
+}

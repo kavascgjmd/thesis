@@ -1,0 +1,8 @@
+
+body {
+    font-family: 'Inter', sans-serif; /* Ensure a clean, modern font similar to most UI designs */
+  }
+  
+  .bg-page {
+    background-color: #f8f8f8; /* Light grey background for page consistency */
+  }
