@@ -4,6 +4,7 @@ import { X, Check, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 const BASE_URL = 'http://localhost:3000';
 type UserRole = 'Admin' | 'Donor' | 'NGO' | 'Recipient';
+import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
 
 interface FormData {
   username: string;
@@ -29,7 +30,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [resendDisabled, setResendDisabled] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(600);
-  
+
   const [formData, setFormData] = useState<FormData>({
     username: '',
     password: '',
@@ -86,10 +87,10 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
 
   const handleChange = async (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    
+
     if (name === 'profile_picture' && 'files' in e.target && e.target.files?.[0]) {
       const file = e.target.files[0];
-      
+
       // Convert file to base64
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
@@ -173,6 +174,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
         setIsAuthenticated(true);
         onClose();
         navigate('/profile', { replace: true });
+
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'OTP verification failed. Please try again.');
@@ -208,15 +210,15 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
   };
 
   return (
-    <div 
+    <div
       className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
       onClick={handleBackdropClick}
     >
-      <div 
+      <div
         className="modal-content bg-white w-[420px] rounded-lg shadow-xl p-6 relative animate-modalFade"
         onClick={e => e.stopPropagation()}
       >
-        <button 
+        <button
           onClick={onClose}
           className="modal-close-button absolute right-4 top-4 text-gray-400 hover:text-gray-600"
           disabled={isLoading}
@@ -246,7 +248,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
                   disabled={isLoading}
                 />
               </div>
-              
+
               <div>
                 <input
                   type="email"
@@ -318,14 +320,18 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
               </div>
 
               <div>
-                <textarea
-                  name="address"
-                  placeholder="Address"
+                <GoogleMapsAutocomplete
                   value={formData.address}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  rows={3}
+                  onChange={(address, coordinates) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      address,
+                      // You may want to store coordinates as well if needed
+                      // coordinates: coordinates || null
+                    }));
+                  }}
                   disabled={isLoading}
+                  placeholder="Enter your address"
                 />
               </div>
 
@@ -376,7 +382,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
               </button>
             </form>
             <div className="mt-6 text-center">
-              <button 
+              <button
                 onClick={handleResendOTP}
                 className="text-red-500 hover:text-red-600 text-[15px]"
                 disabled={resendDisabled || isLoading || timeLeft > 0}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert/Alert';
 import { debounce } from 'lodash';
+import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -28,6 +29,7 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [localQuantities, setLocalQuantities] = useState<Record<number, number>>({});
 
@@ -128,6 +130,11 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
     }
   };
 
+  const handleAddressChange = (address: string, coordinates?: { lat: number; lng: number }) => {
+    setDeliveryAddress(address);
+    setDeliveryCoordinates(coordinates || null);
+  };
+
   const checkout = async () => {
     if (!deliveryAddress.trim()) {
       setError('Please enter a delivery address');
@@ -140,7 +147,11 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ deliveryAddress })
+        body: JSON.stringify({ 
+          deliveryAddress, 
+          deliveryLatitude: deliveryCoordinates?.lat,
+          deliveryLongitude: deliveryCoordinates?.lng
+        })
       });
 
       const data = await response.json();
@@ -149,6 +160,7 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
         setCart([]);
         setLocalQuantities({});
         setDeliveryAddress('');
+        setDeliveryCoordinates(null);
         onCartUpdate();
         onClose();
         navigate(`/payment/${data.orderId}`);
@@ -273,13 +285,17 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
         {/* Checkout Section */}
         {cart.length > 0 && (
           <div className="border-t p-4 bg-gray-50">
-            <textarea
-              value={deliveryAddress}
-              onChange={(e) => setDeliveryAddress(e.target.value)}
-              placeholder="Enter delivery address"
-              className="w-full p-3 border rounded-lg mb-4 resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              rows={3}
-            />
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Delivery Address
+              </label>
+              <GoogleMapsAutocomplete
+                value={deliveryAddress}
+                onChange={handleAddressChange}
+                disabled={isProcessing}
+                placeholder="Enter your delivery address"
+              />
+            </div>
             <button
               onClick={checkout}
               disabled={isProcessing || !deliveryAddress.trim()}

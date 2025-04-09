@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button/Button';
 import { Input } from '../components/ui/input/Input';
 import { Label } from '../components/ui/label/Label';
 import { Textarea } from '../components/ui/textarea/TextArea';
+import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
 
 const foodDonationSchema = z.object({
   food_type: z.string().min(3, "Food type must be at least 3 characters").max(50, "Food type must be less than 50 characters"),
@@ -15,6 +16,8 @@ const foodDonationSchema = z.object({
   expiration_time: z.string().min(1, "Expiration time is required"),
   pickup_location: z.string().min(5, "Pickup location must be at least 5 characters").max(255, "Pickup location is too long"),
   availability_schedule: z.string().min(5, "Availability schedule must be at least 5 characters").max(255, "Availability schedule is too long"),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 });
 
 type FoodDonationForm = z.infer<typeof foodDonationSchema>;
@@ -28,10 +31,29 @@ const DonorFoodForm = () => {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<FoodDonationForm>({
     resolver: zodResolver(foodDonationSchema),
+    defaultValues: {
+      food_type: '',
+      quantity: undefined,
+      expiration_time: '',
+      pickup_location: '',
+      availability_schedule: '',
+    }
   });
+
+  const handlePickupLocationChange = (address: string, coordinates?: { lat: number; lng: number }) => {
+    setValue('pickup_location', address, { shouldValidate: true });
+    
+    // Store coordinates if available
+    if (coordinates) {
+      setValue('latitude', coordinates.lat);
+      setValue('longitude', coordinates.lng);
+    }
+  };
 
   const onSubmit = async (data: FoodDonationForm) => {
     setIsSubmitting(true);
@@ -124,11 +146,11 @@ const DonorFoodForm = () => {
 
           <div className="space-y-2">
             <Label htmlFor="pickup_location">Pickup Location</Label>
-            <Textarea
-              id="pickup_location"
-              placeholder="Detailed pickup location"
-              {...register('pickup_location')}
-              className={errors.pickup_location ? 'border-red-500' : ''}
+            <GoogleMapsAutocomplete
+              value={watch('pickup_location') || ''}
+              onChange={handlePickupLocationChange}
+              disabled={isSubmitting}
+              placeholder="Enter pickup location"
             />
             {errors.pickup_location && (
               <p className="text-sm text-red-500">{errors.pickup_location.message}</p>

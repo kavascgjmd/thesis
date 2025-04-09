@@ -3,9 +3,7 @@ import { Input } from '../ui/input/Input'
 import { User } from '../../types/user'
 import { useState } from 'react'
 import { Button } from '../ui/button/Button'
-
-
-
+import { GoogleMapsAutocomplete } from '../GoogleMapsAutocomplete';
 
 interface BasicInfoFormProps {
   user: User
@@ -53,6 +51,20 @@ export const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
     })
   }
 
+  const handleAddressChange = (address: string, coordinates?: { lat: number; lng: number }) => {
+    // Clear error when field is edited
+    setErrors(prev => ({ ...prev, address: '' }))
+    
+    onUpdateUser({ 
+      address: address.trim(),
+      // You may want to store coordinates in your User type as well
+      ...(coordinates && { 
+        latitude: coordinates.lat,
+        longitude: coordinates.lng
+      })
+    })
+  }
+
   return (
     <form onSubmit={handleSubmit} className="grid gap-4">
       <div className="grid gap-2">
@@ -88,9 +100,9 @@ export const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
       </div>
       <div className="grid gap-2">
         <label className="text-sm font-medium">Address</label>
-        <Input
+        <GoogleMapsAutocomplete
           value={user.address || ''}
-          onChange={(e) => handleFieldChange('address', e.target.value)}
+          onChange={handleAddressChange}
           disabled={isSubmitting}
           placeholder="Enter address"
         />

@@ -43,11 +43,9 @@ export const SignInModal: React.FC<SignInModalProps> = ({
         withCredentials: true
       });
       if (response.data.message === 'Login successful') {
-        setIsAuthenticated(true);
-        
-        navigate('/profile', { replace: true });
-        console.log('hi');
+        setIsAuthenticated(true);2
         onClose();
+        navigate('/profile', { replace: true });
       }
     } catch (err) {
       setError('Invalid credentials. Please try again.');
