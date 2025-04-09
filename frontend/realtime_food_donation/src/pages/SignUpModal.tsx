@@ -1,16 +1,25 @@
-import React, { useState, ChangeEvent, FormEvent } from 'react';
+import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Check, AlertCircle } from 'lucide-react';
+import { X, Check, AlertCircle, Search } from 'lucide-react';
 import axios from 'axios';
 const BASE_URL = 'http://localhost:3000';
 type UserRole = 'Admin' | 'Donor' | 'NGO' | 'Recipient';
 import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
 
+// Interface for country data
+interface Country {
+  name: string;
+  code: string;
+  dialCode: string;
+  flag: string;
+}
+
 interface FormData {
   username: string;
   password: string;
   email: string;
-  phone: string;
+  countryCode: string;
+  phoneNumber: string;
   role: UserRole | '';
   address: string;
   otp: string;
@@ -30,18 +39,87 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [resendDisabled, setResendDisabled] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(600);
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [countries, setCountries] = useState<Country[]>([]);
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
     username: '',
     password: '',
     email: '',
-    phone: '',
+    countryCode: '+1', // Default country code
+    phoneNumber: '',
     role: '',
     address: '',
     otp: '',
     profile_picture: null,
     profile_picture_base64: null
   });
+
+  // Fetch countries data
+  useEffect(() => {
+    const fetchCountries = async () => {
+      try {
+        // Option 1: Fetch from a hosted API
+        const response = await fetch('https://restcountries.com/v3.1/all?fields=name,cca2,idd,flags');
+        const data = await response.json();
+        
+        const countryList: Country[] = data.map((country: any) => {
+          const dialCode = country.idd.root + (country.idd.suffixes?.[0] || '');
+          return {
+            name: country.name.common,
+            code: country.cca2,
+            dialCode: dialCode,
+            flag: country.flags.svg
+          };
+        }).sort((a: Country, b: Country) => a.name.localeCompare(b.name));
+
+        setCountries(countryList);
+        
+        // Set default country (US)
+        const defaultCountry = countryList.find(country => country.code === 'US');
+        if (defaultCountry) {
+          setSelectedCountry(defaultCountry);
+          setFormData(prev => ({
+            ...prev,
+            countryCode: defaultCountry.dialCode
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch countries:', error);
+        // Fallback to a predefined list if API fails
+        setCountries(fallbackCountries);
+        const defaultCountry = fallbackCountries.find(country => country.code === 'US');
+        if (defaultCountry) {
+          setSelectedCountry(defaultCountry);
+          setFormData(prev => ({
+            ...prev,
+            countryCode: defaultCountry.dialCode
+          }));
+        }
+      }
+    };
+
+    fetchCountries();
+  }, []);
+
+  // Fallback country list in case API is unavailable
+  const fallbackCountries: Country[] = [
+    { name: 'United States', code: 'US', dialCode: '+1', flag: 'https://flagcdn.com/us.svg' },
+    { name: 'United Kingdom', code: 'GB', dialCode: '+44', flag: 'https://flagcdn.com/gb.svg' },
+    { name: 'India', code: 'IN', dialCode: '+91', flag: 'https://flagcdn.com/in.svg' },
+    { name: 'Canada', code: 'CA', dialCode: '+1', flag: 'https://flagcdn.com/ca.svg' },
+    { name: 'Australia', code: 'AU', dialCode: '+61', flag: 'https://flagcdn.com/au.svg' },
+    { name: 'China', code: 'CN', dialCode: '+86', flag: 'https://flagcdn.com/cn.svg' },
+    { name: 'Germany', code: 'DE', dialCode: '+49', flag: 'https://flagcdn.com/de.svg' },
+    { name: 'France', code: 'FR', dialCode: '+33', flag: 'https://flagcdn.com/fr.svg' },
+    { name: 'Japan', code: 'JP', dialCode: '+81', flag: 'https://flagcdn.com/jp.svg' },
+    { name: 'Russia', code: 'RU', dialCode: '+7', flag: 'https://flagcdn.com/ru.svg' },
+    { name: 'Brazil', code: 'BR', dialCode: '+55', flag: 'https://flagcdn.com/br.svg' },
+    { name: 'UAE', code: 'AE', dialCode: '+971', flag: 'https://flagcdn.com/ae.svg' },
+    { name: 'Singapore', code: 'SG', dialCode: '+65', flag: 'https://flagcdn.com/sg.svg' },
+  ];
 
   const [validationStates, setValidationStates] = useState({
     minLength: false,
@@ -59,6 +137,19 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
     { key: 'special', label: 'Contains special character', test: (pass: string) => /[!@#$%^&*(),.?":{}|<>]/.test(pass) },
   ];
 
+  // Filter countries based on search query
+  const filteredCountries = searchQuery 
+    ? countries.filter(country => 
+        country.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        country.dialCode.includes(searchQuery)
+      )
+    : countries;
+
+  // Get full phone with country code
+  const getFullPhone = (): string => {
+    return `${formData.countryCode}${formData.phoneNumber}`;
+  };
+
   const updatePasswordValidation = (password: string) => {
     setValidationStates({
       minLength: password.length >= 8,
@@ -67,6 +158,16 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
       number: /\d/.test(password),
       special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
     });
+  };
+
+  const selectCountry = (country: Country) => {
+    setSelectedCountry(country);
+    setFormData(prev => ({
+      ...prev,
+      countryCode: country.dialCode
+    }));
+    setCountryDropdownOpen(false);
+    setSearchQuery('');
   };
 
   React.useEffect(() => {
@@ -78,6 +179,21 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
     }
     return () => clearInterval(timer);
   }, [step, timeLeft]);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (countryDropdownOpen && !target.closest('.country-dropdown')) {
+        setCountryDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [countryDropdownOpen]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -125,12 +241,12 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
     setIsLoading(true);
 
     try {
-      // Create payload object
+      // Create payload object with combined phone number
       const payload = {
         username: formData.username,
         password: formData.password,
         email: formData.email,
-        phone: formData.phone,
+        phone: getFullPhone(), // Send the combined phone number to the backend
         role: formData.role,
         address: formData.address,
         profile_picture: formData.profile_picture_base64
@@ -164,7 +280,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
 
     try {
       const response = await axios.post(`${BASE_URL}/api/user/verify-otp`, {
-        phone: formData.phone,
+        phone: getFullPhone(), // Use the combined phone number here too
         otp: formData.otp
       }, {
         withCredentials: true
@@ -174,7 +290,6 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
         setIsAuthenticated(true);
         onClose();
         navigate('/profile', { replace: true });
-
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'OTP verification failed. Please try again.');
@@ -190,7 +305,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
 
     try {
       await axios.post('/api/resend-otp', {
-        phone: formData.phone
+        phone: getFullPhone() // Use the combined phone number
       }, {
         withCredentials: true
       });
@@ -289,17 +404,79 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
                 </div>
               </div>
 
-              <div>
-                <input
-                  type="tel"
-                  name="phone"
-                  placeholder="Phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
-                  disabled={isLoading}
-                />
+              {/* Phone number with country code dropdown */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="relative country-dropdown">
+                  <button
+                    type="button"
+                    onClick={() => setCountryDropdownOpen(!countryDropdownOpen)}
+                    className="w-full px-3 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px] flex items-center justify-between"
+                    disabled={isLoading}
+                  >
+                    {selectedCountry ? (
+                      <div className="flex items-center">
+                        <img 
+                          src={selectedCountry.flag} 
+                          alt={selectedCountry.name} 
+                          className="w-6 h-4 mr-2 object-cover" 
+                        />
+                        <span>{selectedCountry.dialCode}</span>
+                      </div>
+                    ) : (
+                      '+1'
+                    )}
+                  </button>
+
+                  {countryDropdownOpen && (
+                    <div className="absolute z-10 mt-1 w-64 max-h-60 overflow-auto bg-white border border-gray-300 rounded-md shadow-lg">
+                      <div className="sticky top-0 bg-white p-2 border-b">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search countries..."
+                            className="w-full px-3 py-2 pl-8 border border-gray-300 rounded-md text-sm"
+                          />
+                          <Search className="absolute left-2 top-2 h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+                      <div className="py-1">
+                        {filteredCountries.map((country) => (
+                          <button
+                            key={country.code}
+                            type="button"
+                            onClick={() => selectCountry(country)}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center"
+                          >
+                            <img 
+                              src={country.flag} 
+                              alt={country.name} 
+                              className="w-6 h-4 mr-2 object-cover" 
+                            />
+                            <span className="flex-1">{country.name}</span>
+                            <span className="text-gray-500">{country.dialCode}</span>
+                          </button>
+                        ))}
+                        {filteredCountries.length === 0 && (
+                          <div className="px-4 py-2 text-sm text-gray-500">No countries found</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-2">
+                  <input
+                    type="tel"
+                    name="phoneNumber"
+                    placeholder="Phone Number"
+                    value={formData.phoneNumber}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
 
               <div>
@@ -326,8 +503,6 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
                     setFormData(prev => ({
                       ...prev,
                       address,
-                      // You may want to store coordinates as well if needed
-                      // coordinates: coordinates || null
                     }));
                   }}
                   disabled={isLoading}
@@ -359,8 +534,8 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
           <>
             <h2 className="text-[22px] font-medium text-gray-800 mb-6">Enter OTP</h2>
             <p className="text-sm text-gray-600 mb-4">
-              Verification code has been sent to your phone number. Please enter the code below.
-              Valid for {formatTime(timeLeft)}.
+              Verification code has been sent to your phone number {getFullPhone()}. 
+              Please enter the code below. Valid for {formatTime(timeLeft)}.
             </p>
             <form onSubmit={handleOTPVerification} className="space-y-4">
               <input

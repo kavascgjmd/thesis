@@ -62,11 +62,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setError(null)
 
     try {
-      // Prepare basic user data
+      // Prepare basic user data - keeping the full phone number intact
       const basicData = {
         username: formData.basic.username,
         email: formData.basic.email,
-        phone: formData.basic.phone || '',
+        phone: formData.basic.phone, // Pass the combined phone number as is
         address: formData.basic.address || '',
         profile_picture: formData.basic.profilePicture
       }
