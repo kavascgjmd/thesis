@@ -1,9 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './Dialog'
 import { Button } from '../ui/button/Button'
 import { User, RoleSpecificDetails } from '../../types/user'
 import { BasicInfoForm } from './BasicInfoForm'
 import { RoleDetailsForm } from './RoleDetailsForm'
+import { useOtpService } from '../../hooks/useOtpService'
 
 interface EditProfileModalProps {
   isOpen: boolean
@@ -25,10 +26,28 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [activeTab, setActiveTab] = useState('basic')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Create a local copy of user data that persists between renders
   const [formData, setFormData] = useState({
     basic: { ...user },
     role: { ...roleSpecificDetails }
   })
+  
+  // Track verification states separately
+  const [emailVerificationInProgress, setEmailVerificationInProgress] = useState(false)
+  const [phoneVerificationInProgress, setPhoneVerificationInProgress] = useState(false)
+  
+  const { error: otpError, isLoading: otpLoading } = useOtpService()
+
+  // Update local form data when props change (but only if not in verification process)
+  useEffect(() => {
+    if (!emailVerificationInProgress && !phoneVerificationInProgress) {
+      setFormData({
+        basic: { ...user },
+        role: { ...roleSpecificDetails }
+      })
+    }
+  }, [user, roleSpecificDetails, emailVerificationInProgress, phoneVerificationInProgress])
 
   const handleTabChange = (tab: string) => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -56,21 +75,37 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     }))
   }
 
+  // Track verification status changes
+  const handleVerificationStatusChange = (type: 'email' | 'phone', inProgress: boolean) => {
+    if (type === 'email') {
+      setEmailVerificationInProgress(inProgress)
+    } else {
+      setPhoneVerificationInProgress(inProgress)
+    }
+  }
+
   const handleSave = async (e: React.MouseEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     setError(null)
-
+  
     try {
-      // Prepare basic user data - keeping the full phone number intact
+      // Check if there are pending verifications
+      if (emailVerificationInProgress || phoneVerificationInProgress) {
+        setError('Please complete all pending verifications before saving')
+        setIsSubmitting(false)
+        return
+      }
+  
+      // Prepare basic user data
       const basicData = {
         username: formData.basic.username,
         email: formData.basic.email,
-        phone: formData.basic.phone, // Pass the combined phone number as is
+        phone: formData.basic.phone,
         address: formData.basic.address || '',
         profile_picture: formData.basic.profilePicture
       }
-
+  
       // Prepare role-specific data (using snake_case for backend)
       const roleData = {
         ...formData.role,
@@ -137,6 +172,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               onUpdateUser={handleBasicInfoChange}
               isSubmitting={isSubmitting}
               preventSubmit
+              onVerificationStatusChange={handleVerificationStatusChange}
             />
           ) : (
             <RoleDetailsForm 
@@ -154,7 +190,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             type="button"
             variant="outline" 
             onClick={onClose} 
-            disabled={isSubmitting}
+            disabled={isSubmitting || emailVerificationInProgress || phoneVerificationInProgress}
           >
             Cancel
           </Button>
@@ -162,7 +198,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             type="button"
             className="bg-rose-500 hover:bg-rose-600 text-white"
             onClick={handleSave}
-            disabled={isSubmitting}
+            disabled={isSubmitting || emailVerificationInProgress || phoneVerificationInProgress}
           >
             {isSubmitting ? 'Saving...' : 'Save changes'}
           </Button>

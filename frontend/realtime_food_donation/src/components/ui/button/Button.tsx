@@ -25,6 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
   icon: Icon,
   loading,
   disabled,
+  type = "button",
   ...props
 }, ref) => {
   return (
