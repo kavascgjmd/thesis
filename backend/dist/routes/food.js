@@ -14,14 +14,35 @@ const zod_1 = require("zod");
 const util_1 = require("../db/util");
 const auth_1 = require("../middlewares/auth");
 const router = (0, express_1.Router)();
-// Validation schema for food donation
-const foodDonationSchema = zod_1.z.object({
+// First create the base object schema
+const baseFoodDonationSchema = zod_1.z.object({
     food_type: zod_1.z.string().min(3).max(50),
-    quantity: zod_1.z.number().positive(),
-    expiration_time: zod_1.z.coerce.date(), // This will be more forgiving with datetime formats
+    food_category: zod_1.z.enum(['Cooked Meal', 'Raw Ingredients', 'Packaged Items']),
+    // Different fields based on food category
+    servings: zod_1.z.number().positive().optional(),
+    weight_kg: zod_1.z.number().positive().optional(),
+    quantity: zod_1.z.number().positive().optional(),
+    package_size: zod_1.z.string().optional(),
+    expiration_time: zod_1.z.coerce.date(),
     pickup_location: zod_1.z.string().min(5).max(255),
     image: zod_1.z.string().nullable().optional(),
     availability_schedule: zod_1.z.string().min(5).max(255)
+});
+// Then create the validation schema with refinement
+const foodDonationSchema = baseFoodDonationSchema.refine(data => {
+    // Validate that the appropriate quantity field is provided based on food category
+    if (data.food_category === 'Cooked Meal' && data.servings === undefined) {
+        return false;
+    }
+    if (data.food_category === 'Raw Ingredients' && data.weight_kg === undefined) {
+        return false;
+    }
+    if (data.food_category === 'Packaged Items' && (data.quantity === undefined || data.package_size === undefined)) {
+        return false;
+    }
+    return true;
+}, {
+    message: "Required quantity fields missing for selected food category"
 });
 // Get all available food donations
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -113,12 +134,24 @@ router.post('/', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void 0, 
             });
             return;
         }
-        const { food_type, quantity, expiration_time, pickup_location, image, availability_schedule } = validationResult.data;
-        // Create food donation
+        const { food_type, food_category, servings, weight_kg, quantity, package_size, expiration_time, pickup_location, image, availability_schedule } = validationResult.data;
+        // Create food donation with new fields
         const insertQuery = yield (0, util_1.query)(`INSERT INTO food_donations 
-       (donor_id, food_type, quantity, expiration_time, pickup_location, image, availability_schedule, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'AVAILABLE')
-       RETURNING *`, [donorQuery.rows[0].id, food_type, quantity, expiration_time, pickup_location, image, availability_schedule]);
+       (donor_id, food_type, food_category, servings, weight_kg, quantity, package_size, expiration_time, pickup_location, image, availability_schedule, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'AVAILABLE')
+       RETURNING *`, [
+            donorQuery.rows[0].id,
+            food_type,
+            food_category,
+            servings,
+            weight_kg,
+            quantity,
+            package_size,
+            expiration_time,
+            pickup_location,
+            image,
+            availability_schedule
+        ]);
         res.status(201).json({
             success: true,
             message: 'Food donation created successfully',
@@ -158,7 +191,8 @@ router.put('/:id', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void 0
             return;
         }
         // Validate input
-        const validationResult = foodDonationSchema.partial().safeParse(req.body);
+        // In the update route
+        const validationResult = baseFoodDonationSchema.partial().safeParse(req.body);
         if (!validationResult.success) {
             res.status(400).json({
                 success: false,
@@ -167,11 +201,12 @@ router.put('/:id', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void 0
             });
             return;
         }
-        const updateFields = validationResult.data;
-        const updates = Object.entries(updateFields)
+        const updateData = validationResult.data;
+        // Convert object to array of fields and values for dynamic SQL
+        const updates = Object.entries(updateData)
             .filter(([_, value]) => value !== undefined)
             .map(([key, _], index) => `${key} = $${index + 1}`);
-        const values = Object.values(updateFields).filter(value => value !== undefined);
+        const values = Object.values(updateData).filter(value => value !== undefined);
         if (updates.length === 0) {
             res.status(400).json({
                 success: false,

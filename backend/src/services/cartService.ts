@@ -1,6 +1,7 @@
 import redisClient from '../redisClient';
 import { query } from '../db/util';
 import mapService from './mapService';
+
 interface CartItem {
   foodDonationId: number;
   donorId: number;
@@ -8,6 +9,10 @@ interface CartItem {
   notes?: string;
   itemTotal: number; 
   status: string;
+  foodType?: string;
+  foodCategory?: string;
+  donorName?: string;
+  pickupLocation?: string;
 }
 
 interface Cart {
@@ -15,7 +20,7 @@ interface Cart {
   userId: number;
   items: CartItem[];
   deliveryAddress?: string;
-  deliveryFee: number;  // Changed from string to number
+  deliveryFee: number;
   totalAmount: number; 
   status: string;
   lastAccessed?: number;
@@ -25,9 +30,10 @@ class CartService {
   private readonly CART_EXPIRY = 24 * 60 * 60; // 24 hours
   private readonly CART_INACTIVE_THRESHOLD = 12 * 60 * 60; // 12 hours
 
-   private getCartKey(userId: number, cartId?: number): string {
+  private getCartKey(userId: number, cartId?: number): string {
     return cartId ? `cart:${userId}:${cartId}` : `cart:${userId}:temp`;
   }
+
   async cleanupOldCarts(userId: number): Promise<void> {
     try {
       const keys = await redisClient.keys(`cart:${userId}:*`);
@@ -65,7 +71,7 @@ class CartService {
       return {
         ...cart,
         status: cart.status || 'PENDING',
-        deliveryFee: cart.deliveryFee || 0,  // Default to 0 instead of '0.00'
+        deliveryFee: cart.deliveryFee || 0,
         totalAmount: cart.totalAmount || 0 
       };
     } catch (error) {
@@ -73,6 +79,7 @@ class CartService {
       throw new Error('Failed to retrieve cart');
     }
   }
+
   async addToCart(userId: number, item: CartItem, cartId?: number): Promise<void> {
     try {
       // Only cleanup if creating a new cart and no existing cart is found
@@ -85,14 +92,21 @@ class CartService {
         userId,
         items: [],
         status: 'PENDING',
-        deliveryFee: 0,    // Changed from '0.00' to 0
+        deliveryFee: 0,
         totalAmount: 0,  
         lastAccessed: Date.now()
       };
 
-      // Rest of the addToCart implementation remains the same
+      // Get the food donation with new structure
       const foodDonation = await query(
-        'SELECT quantity FROM food_donations WHERE id = $1 AND status = \'AVAILABLE\'',
+        `SELECT 
+          food_category, 
+          servings, 
+          weight_kg, 
+          quantity, 
+          status 
+        FROM food_donations 
+        WHERE id = $1 AND status = 'AVAILABLE'`,
         [item.foodDonationId]
       );
 
@@ -100,7 +114,25 @@ class CartService {
         throw new Error('Food donation not available');
       }
 
-      if (foodDonation.rows[0].quantity < item.quantity) {
+      // Check if the requested quantity exceeds available amount based on food category
+      const fd = foodDonation.rows[0];
+      let availableQuantity: number;
+
+      switch (fd.food_category) {
+        case 'Cooked Meal':
+          availableQuantity = fd.servings || 0;
+          break;
+        case 'Raw Ingredients':
+          availableQuantity = Math.floor(fd.weight_kg || 0);
+          break;
+        case 'Packaged Items':
+          availableQuantity = fd.quantity || 0;
+          break;
+        default:
+          availableQuantity = fd.quantity || 0;
+      }
+
+      if (availableQuantity < item.quantity) {
         throw new Error('Requested quantity exceeds available amount');
       }
 
@@ -110,7 +142,7 @@ class CartService {
 
       if (existingItemIndex > -1) {
         const newQuantity = cart.items[existingItemIndex].quantity + item.quantity;
-        if (newQuantity > foodDonation.rows[0].quantity) {
+        if (newQuantity > availableQuantity) {
           throw new Error('Total quantity exceeds available amount');
         }
         cart.items[existingItemIndex].quantity = newQuantity;
@@ -122,7 +154,11 @@ class CartService {
           quantity: item.quantity,
           notes: item.notes,
           status: 'ACTIVE',
-          itemTotal: 0  
+          itemTotal: 0,
+          foodType: item.foodType,
+          foodCategory: item.foodCategory,
+          donorName: item.donorName,
+          pickupLocation: item.pickupLocation
         });
       }
 
@@ -148,7 +184,14 @@ class CartService {
       // Check available quantity if updating quantity
       if (updates.quantity !== undefined) {
         const foodDonation = await query(
-          'SELECT quantity FROM food_donations WHERE id = $1 AND status = \'AVAILABLE\'',
+          `SELECT 
+            food_category, 
+            servings, 
+            weight_kg, 
+            quantity, 
+            status 
+          FROM food_donations 
+          WHERE id = $1 AND status = 'AVAILABLE'`,
           [foodDonationId]
         );
 
@@ -156,7 +199,24 @@ class CartService {
           throw new Error('Food donation not available');
         }
 
-        if (updates.quantity > foodDonation.rows[0].quantity) {
+        const fd = foodDonation.rows[0];
+        let availableQuantity: number;
+
+        switch (fd.food_category) {
+          case 'Cooked Meal':
+            availableQuantity = fd.servings || 0;
+            break;
+          case 'Raw Ingredients':
+            availableQuantity = Math.floor(fd.weight_kg || 0);
+            break;
+          case 'Packaged Items':
+            availableQuantity = fd.quantity || 0;
+            break;
+          default:
+            availableQuantity = fd.quantity || 0;
+        }
+
+        if (updates.quantity > availableQuantity) {
           throw new Error('Requested quantity exceeds available amount');
         }
       }
@@ -201,9 +261,9 @@ class CartService {
     }
   }
 
-  async persistCart(userId: number, deliveryAddress: string): Promise<{
+  async persistCart(userId: number, deliveryAddress: string, deliveryLatitude?: number, deliveryLongitude?: number): Promise<{
     cartId: number;
-    deliveryFee: number;    // Changed return type from string to number
+    deliveryFee: number;
     totalAmount: number;  
   }> {
     try {
@@ -212,20 +272,21 @@ class CartService {
         throw new Error('Cart is empty');
       }
 
-      // Rest of persistCart implementation remains the same
       await query('BEGIN');
 
       const foodDonationsResult = await query(
-        `SELECT fd.id, fd.pickup_location 
+        `SELECT fd.id, fd.pickup_location, fd.food_category, fd.servings, fd.weight_kg, fd.quantity 
          FROM food_donations fd 
          WHERE fd.id = ANY($1::int[])`,
         [cart.items.map(item => item.foodDonationId)]
       );
+      
       const locations = [
         deliveryAddress,
         ...foodDonationsResult.rows.map(fd => fd.pickup_location)
       ];
 
+      // Validate all locations
       for (const location of locations) {
         try {
           await mapService.getCoordinates(location);
@@ -233,6 +294,8 @@ class CartService {
           throw new Error(`Invalid location: ${location}`);
         }
       }
+
+      // Calculate delivery route and fee
       const startingPoint = { type: 'start', location: deliveryAddress };
       const pickupPoints = foodDonationsResult.rows.map(fd => ({
         type: 'pickup' as const,
@@ -244,9 +307,18 @@ class CartService {
       const points = [startingPoint, ...pickupPoints, finalDelivery];
 
       let totalDistance = 0;
+      
+      // If we have precise coordinates, use them, otherwise geocode the address
+      const useProvidedCoordinates = deliveryLatitude !== undefined && deliveryLongitude !== undefined;
+      
       for (let i = 0; i < points.length - 1; i++) {
-        const startCoords = await mapService.getCoordinates(points[i].location);
-        const endCoords = await mapService.getCoordinates(points[i + 1].location);
+        const startCoords = i === 0 && useProvidedCoordinates 
+          ? { lat: deliveryLatitude!, lng: deliveryLongitude! }
+          : await mapService.getCoordinates(points[i].location);
+          
+        const endCoords = i === points.length - 2 && useProvidedCoordinates 
+          ? { lat: deliveryLatitude!, lng: deliveryLongitude! }
+          : await mapService.getCoordinates(points[i + 1].location);
         
         const distance = mapService.calculateDistance(
           startCoords.lat,
@@ -291,13 +363,66 @@ class CartService {
       // Clear the temporary cart
       await this.clearCart(userId);
 
+      // Process each item in the cart
       for (const item of cart.items) {
         const foodDonation = await query(
-          'SELECT quantity, status FROM food_donations WHERE id = $1 AND status = \'AVAILABLE\' FOR UPDATE',
+          `SELECT 
+            food_category, 
+            servings, 
+            weight_kg, 
+            quantity, 
+            status 
+          FROM food_donations 
+          WHERE id = $1 AND status = 'AVAILABLE' 
+          FOR UPDATE`,
           [item.foodDonationId]
         );
 
-        if (!foodDonation.rows[0] || foodDonation.rows[0].quantity < item.quantity) {
+        if (!foodDonation.rows[0]) {
+          throw new Error(`Food donation ${item.foodDonationId} is not available`);
+        }
+
+        const fd = foodDonation.rows[0];
+        let availableQuantity: number;
+        let updateQuery: string;
+
+        switch (fd.food_category) {
+          case 'Cooked Meal':
+            availableQuantity = fd.servings || 0;
+            updateQuery = `
+              UPDATE food_donations 
+              SET servings = servings - $1,
+                  status = CASE 
+                    WHEN servings - $1 <= 0 THEN 'UNAVAILABLE' 
+                    ELSE status 
+                  END
+              WHERE id = $2`;
+            break;
+          case 'Raw Ingredients':
+            availableQuantity = Math.floor(fd.weight_kg || 0);
+            updateQuery = `
+              UPDATE food_donations 
+              SET weight_kg = weight_kg - $1,
+                  status = CASE 
+                    WHEN weight_kg - $1 <= 0 THEN 'UNAVAILABLE' 
+                    ELSE status 
+                  END
+              WHERE id = $2`;
+            break;
+          case 'Packaged Items':
+          default:
+            availableQuantity = fd.quantity || 0;
+            updateQuery = `
+              UPDATE food_donations 
+              SET quantity = quantity - $1,
+                  status = CASE 
+                    WHEN quantity - $1 <= 0 THEN 'UNAVAILABLE' 
+                    ELSE status 
+                  END
+              WHERE id = $2`;
+        }
+
+        if (availableQuantity < item.quantity) {
           throw new Error(`Insufficient quantity available for food donation ${item.foodDonationId}`);
         }
 
@@ -314,16 +439,8 @@ class CartService {
           [cartId, item.foodDonationId, item.quantity, 'ACTIVE', item.notes]
         );
 
-        await query(
-          `UPDATE food_donations 
-           SET quantity = quantity - $1,
-               status = CASE 
-                 WHEN quantity - $1 <= 0 THEN 'UNAVAILABLE' 
-                 ELSE status 
-               END
-           WHERE id = $2`,
-          [item.quantity, item.foodDonationId]
-        );
+        // Update food donation with appropriate field based on category
+        await query(updateQuery, [item.quantity, item.foodDonationId]);
       }
 
       await query('COMMIT');

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card/Card";
 import { Button } from "../components/ui/button/Button";
-import { Clock, MapPin, Utensils, Users, Building, Phone, Plus, Minus, ShoppingCart } from 'lucide-react';
+import { Input } from "../components/ui/input/Input";
+import { Clock, MapPin, Utensils, Users, Building, Phone, ShoppingCart } from 'lucide-react';
 import CartSidebar from './CartSidebar';
 
 const API_BASE_URL = 'http://localhost:3000/api';
@@ -11,7 +12,11 @@ interface FoodDonation {
   id: number;
   donor_id: number;
   food_type: string;
-  quantity: number;
+  food_category: string; // New field
+  servings?: number;      // For Cooked Meals
+  weight_kg?: number;     // For Raw Ingredients
+  quantity?: number;      // For Packaged Items
+  package_size?: string;  // For Packaged Items
   expiration_time: string;
   pickup_location: string;
   image: string | null;
@@ -23,13 +28,13 @@ interface FoodDonation {
   operating_hours: string;
 }
 
-
 interface CartItem {
   foodDonationId: number;
   donorId: number;
   quantity: number;
-  itemTotal: number; // New field for decimal total
+  itemTotal: number;
   foodType: string;
+  foodCategory: string; // New field
   donorName: string;
   pickupLocation: string;
 }
@@ -47,11 +52,19 @@ const FoodDetailPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [cartQuantity, setCartQuantity] = useState<number>(0);
 
   useEffect(() => {
     fetchFoodDetails();
     fetchCart();
   }, [id]);
+
+  useEffect(() => {
+    if (food) {
+      const existingCartItem = cartItems.find(item => item.foodDonationId === food.id);
+      setCartQuantity(existingCartItem?.quantity || 0);
+    }
+  }, [food, cartItems]);
 
   const fetchFoodDetails = async (): Promise<void> => {
     try {
@@ -83,64 +96,109 @@ const FoodDetailPage: React.FC = () => {
     }
   };
 
-  const handleQuantityChange = async (change: number, e: React.MouseEvent) => {
+  const handleQuantityInputChange = (value: string) => {
+    const newQuantity = parseInt(value) || 0;
+    setCartQuantity(newQuantity);
+  };
+
+  const handleAddToCart = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!food) return;
   
-    const currentCartItem = cartItems.find(item => item.foodDonationId === food.id);
-    const currentQuantity = currentCartItem?.quantity || 0;
-    const newQuantity = currentQuantity + change;
-  
-    if (newQuantity < 0 || newQuantity > food.quantity) return;
-  
+    // Check if valid quantity
+    let maxQuantity = 0;
+    if (food.food_category === 'Cooked Meal') {
+      maxQuantity = food.servings || 0;
+    } else if (food.food_category === 'Raw Ingredients') {
+      maxQuantity = Math.floor(food.weight_kg || 0);
+    } else if (food.food_category === 'Packaged Items') {
+      maxQuantity = food.quantity || 0;
+    }
+    
+    if (cartQuantity <= 0 || cartQuantity > maxQuantity) {
+      alert(`Please enter a valid quantity between 1 and ${maxQuantity}`);
+      return;
+    }
+    
     try {
-      if (newQuantity === 0) {
+      const currentCartItem = cartItems.find(item => item.foodDonationId === food.id);
+      
+      if (cartQuantity === 0 && currentCartItem) {
+        // Remove from cart
         await fetch(`${API_BASE_URL}/cart/items/${food.id}`, {
           method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json'
+          },
           credentials: 'include'
         });
       } else if (currentCartItem) {
+        // Update cart
         await fetch(`${API_BASE_URL}/cart/items/${food.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json'
+          },
           credentials: 'include',
           body: JSON.stringify({ 
-            quantity: newQuantity,
-            itemTotal: Number(newQuantity)
+            quantity: cartQuantity,
+            itemTotal: Number(cartQuantity)
           })
         });
       } else {
+        // Add to cart
         const cartItem = {
           foodDonationId: food.id,
           donorId: food.donor_id,
-          quantity: newQuantity,
-          itemTotal: Number(newQuantity),
+          quantity: cartQuantity,
+          itemTotal: Number(cartQuantity),
           foodType: food.food_type,
+          foodCategory: food.food_category,
           donorName: food.donor_name,
           pickupLocation: food.pickup_location
         };
-  
+    
         await fetch(`${API_BASE_URL}/cart/items`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json'
+          },
           credentials: 'include',
           body: JSON.stringify(cartItem)
         });
       }
-  
+    
       await fetchCart();
     } catch (error) {
       console.error('Error updating cart:', error);
     }
   };
 
-  const getCartQuantity = (foodId: number) => {
-    const cartItem = cartItems.find(item => item.foodDonationId === foodId);
-    return cartItem?.quantity || 0;
-  };
-
   const formatDateTime = (datetime: string): string => {
     return new Date(datetime).toLocaleString();
+  };
+
+  const renderQuantityInfo = (food: FoodDonation) => {
+    switch (food.food_category) {
+      case 'Cooked Meal':
+        return `${food.servings} servings`;
+      case 'Raw Ingredients':
+        return `${food.weight_kg} kg`;
+      case 'Packaged Items':
+        return `${food.quantity} × ${food.package_size}`;
+      default:
+        return `${food.quantity} units`;
+    }
+  };
+
+  const getMaxQuantity = (food: FoodDonation) => {
+    if (food.food_category === 'Cooked Meal') {
+      return food.servings;
+    } else if (food.food_category === 'Raw Ingredients') {
+      return Math.floor(food.weight_kg || 0);
+    } else {
+      return food.quantity;
+    }
   };
 
   if (loading) {
@@ -183,9 +241,14 @@ const FoodDetailPage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
               <span className="text-2xl">{food.food_type}</span>
-              <span className="text-sm px-3 py-1 bg-green-100 text-green-800 rounded">
-                {food.status}
-              </span>
+              <div className="flex gap-2">
+                <span className="text-sm px-3 py-1 bg-green-100 text-green-800 rounded">
+                  {food.status}
+                </span>
+                <span className="text-sm px-3 py-1 bg-blue-100 text-blue-800 rounded">
+                  {food.food_category}
+                </span>
+              </div>
             </CardTitle>
           </CardHeader>
 
@@ -203,7 +266,7 @@ const FoodDetailPage: React.FC = () => {
                 <h3 className="text-xl font-semibold">Food Details</h3>
                 <div className="flex items-center gap-2">
                   <Utensils className="h-5 w-5" />
-                  <span>Available: {food.quantity} servings</span>
+                  <span>Available: {renderQuantityInfo(food)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="h-5 w-5" />
@@ -237,23 +300,23 @@ const FoodDetailPage: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-center gap-4 mt-6">
-              <button
-                className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50"
-                onClick={(e) => handleQuantityChange(-1, e)}
-                disabled={getCartQuantity(food.id) === 0}
-              >
-                <Minus className="w-6 h-6" />
-              </button>
-              <span className="w-12 text-center text-xl">
-                {getCartQuantity(food.id)}
-              </span>
-              <button
-                className="p-2 rounded-full hover:bg-gray-100"
-                onClick={(e) => handleQuantityChange(1, e)}
-                disabled={food.quantity <= getCartQuantity(food.id)}
-              >
-                <Plus className="w-6 h-6" />
-              </button>
+              <div className="flex items-center justify-between gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  max={getMaxQuantity(food)}
+                  value={cartQuantity || ''}
+                  onChange={(e) => handleQuantityInputChange(e.target.value)}
+                  className="w-24"
+                  placeholder="Qty"
+                />
+                <Button
+                  onClick={handleAddToCart}
+                  className="ml-2"
+                >
+                  Add to Cart
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -40,6 +40,26 @@ interface DriverDetails {
   avatar?: string;
 }
 
+// Updated to match the new food_donations table structure
+interface FoodDonationItem {
+  foodDonationId: number;
+  donorId: number;
+  quantity: number;
+  itemTotal: string;
+  foodType: string;
+  foodCategory: string; // New field
+  servings?: number; // For Cooked Meals
+  weightKg?: number; // Changed from weight_kg
+  packageSize?: string; // Changed from package_size
+  donorName: string;
+  donorContact: {
+    person: string;
+    number: string;
+  };
+  pickupLocation: string;
+  expirationTime?: Date | string; // Added missing property
+}
+
 interface OrderDetails {
   id: number;
   cartId: number;
@@ -52,19 +72,7 @@ interface OrderDetails {
   totalAmount: string;
   deliveryAddress: string;
   orderNotes?: string;
-  items: Array<{
-    foodDonationId: number;
-    donorId: number;
-    quantity: number;
-    itemTotal: string;
-    foodType: string;
-    donorName: string;
-    donorContact: {
-      person: string;
-      number: string;
-    };
-    pickupLocation: string;
-  }>;
+  items: FoodDonationItem[];
   route?: OptimalRoute | null;
   driverLocation?: {
     lat: number;
@@ -239,6 +247,7 @@ class OrderService {
       
       const order = orderResult.rows[0];
       
+      // Updated query to include new food_donations fields
       const itemsResult = await query(
         `SELECT 
           ci.food_donation_id, 
@@ -246,6 +255,10 @@ class OrderService {
           ci.quantity, 
           ci.item_total,
           fd.food_type, 
+          fd.food_category,
+          fd.servings,
+          fd.weight_kg,
+          fd.package_size,
           d.organization_name as donor_name,
           d.contact_person,
           d.contact_number,
@@ -307,6 +320,44 @@ class OrderService {
         }
       }
       
+      // Map food donations with the new fields
+      const mappedItems = itemsResult.rows.map(item => {
+        const baseItem = {
+          foodDonationId: item.food_donation_id,
+          donorId: item.donor_id,
+          quantity: item.quantity,
+          itemTotal: item.item_total,
+          foodType: item.food_type,
+          foodCategory: item.food_category, // New field
+          donorName: item.donor_name,
+          donorContact: {
+            person: item.contact_person,
+            number: item.contact_number
+          },
+          pickupLocation: item.pickup_location
+        };
+
+        // Add category-specific fields based on food_category
+        if (item.food_category === 'Cooked Meal' && item.servings) {
+          return {
+            ...baseItem,
+            servings: item.servings
+          };
+        } else if (item.food_category === 'Raw Ingredients' && item.weight_kg) {
+          return {
+            ...baseItem,
+            weight_kg: parseFloat(item.weight_kg)
+          };
+        } else if (item.food_category === 'Packaged Items' && item.package_size) {
+          return {
+            ...baseItem,
+            package_size: item.package_size
+          };
+        }
+        
+        return baseItem;
+      });
+      
       return {
         id: order.id,
         cartId: order.cart_id,
@@ -319,19 +370,7 @@ class OrderService {
         totalAmount: order.total_amount,
         deliveryAddress: order.delivery_address,
         orderNotes: order.order_notes,
-        items: itemsResult.rows.map(item => ({
-          foodDonationId: item.food_donation_id,
-          donorId: item.donor_id,
-          quantity: item.quantity,
-          itemTotal: item.item_total,
-          foodType: item.food_type,
-          donorName: item.donor_name,
-          donorContact: {
-            person: item.contact_person,
-            number: item.contact_number
-          },
-          pickupLocation: item.pickup_location
-        })),
+        items: mappedItems,
         route,
         driverLocation,
         deliveryStatus: order.delivery_status,
@@ -344,6 +383,7 @@ class OrderService {
       throw error;
     }
   }
+
   async assignDriverToOrder(orderId: number, driverId: number): Promise<void> {
     try {
       // Check if driver exists in the drivers table
@@ -410,6 +450,7 @@ class OrderService {
       throw error;
     }
   }
+
   async updateDeliveryStatus(orderId: number, status: string, location?: { lat: number, lng: number }): Promise<void> {
     try {
       const validStatuses = ['assigned', 'picked_up', 'in_transit', 'delivered'];

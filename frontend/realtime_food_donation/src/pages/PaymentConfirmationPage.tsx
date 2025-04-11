@@ -18,8 +18,12 @@ interface OrderDetails {
   deliveryAddress: string;
   items: Array<{
     food_type: string;
+    food_category: string; // New field
     donor_name: string;
-    quantity: number;
+    quantity?: number; // Now optional
+    servings?: number; // For Cooked Meals
+    weight_kg?: number; // For Raw Ingredients
+    package_size?: string; // For Packaged Items
     pickup_location: string;
   }>;
   route?: {
@@ -266,10 +270,25 @@ const PaymentConfirmationPage: React.FC = () => {
             <div key={index} className="p-3 border rounded-md">
               <div className="flex justify-between">
                 <h3 className="font-medium">{item.food_type}</h3>
-                <span className="text-sm">Qty: {item.quantity}</span>
+                <span className="text-sm bg-gray-100 px-2 py-1 rounded-full text-gray-700">{item.food_category}</span>
               </div>
               <p className="text-sm text-gray-500">From: {item.donor_name}</p>
               <p className="text-sm text-gray-500">Pickup Location: {item.pickup_location}</p>
+              
+              {/* Conditional rendering based on food category */}
+              {item.food_category === 'Cooked Meal' && item.servings && (
+                <p className="text-sm mt-1">Servings: {item.servings}</p>
+              )}
+              {item.food_category === 'Raw Ingredients' && item.weight_kg && (
+                <p className="text-sm mt-1">Weight: {item.weight_kg} kg</p>
+              )}
+              {item.food_category === 'Packaged Items' && item.package_size && (
+                <p className="text-sm mt-1">Package Size: {item.package_size}</p>
+              )}
+              {/* Keep quantity for backward compatibility */}
+              {item.quantity && (
+                <p className="text-sm mt-1">Quantity: {item.quantity}</p>
+              )}
             </div>
           ))}
         </div>

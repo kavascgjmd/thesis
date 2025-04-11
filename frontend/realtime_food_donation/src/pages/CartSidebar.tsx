@@ -10,9 +10,13 @@ const API_BASE_URL = 'http://localhost:3000/api';
 interface CartItem {
   foodDonationId: number;
   donorId: number;
-  quantity: number;
+  quantity?: number; // Now optional
+  servings?: number; // For cooked meals
+  weight_kg?: number; // For raw ingredients
+  package_size?: string; // For packaged items
   notes?: string;
   foodType: string;
+  foodCategory: string; // New field
   donorName: string;
   pickupLocation: string;
 }
@@ -46,7 +50,13 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
         // Initialize local quantities
         const quantities: Record<number, number> = {};
         data.cart.items?.forEach((item: CartItem) => {
-          quantities[item.foodDonationId] = item.quantity;
+          if (item.quantity) {
+            quantities[item.foodDonationId] = item.quantity;
+          } else if (item.servings) {
+            quantities[item.foodDonationId] = item.servings;
+          } else {
+            quantities[item.foodDonationId] = 1; // Default quantity
+          }
         });
         setLocalQuantities(quantities);
         setError(null);
@@ -68,12 +78,27 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
 
   // Debounced API call for quantity updates
   const debouncedUpdateQuantity = useCallback(
-    debounce(async (foodDonationId: number, newQuantity: number) => {
+    debounce(async (foodDonationId: number, newQuantity: number, foodCategory: string) => {
       try {
+        // Construct the payload based on food category
+        let payload: any = {};
+        
+        if (foodCategory === 'Cooked Meal') {
+          payload = { servings: newQuantity };
+        } else if (foodCategory === 'Raw Ingredients') {
+          // For raw ingredients, we might adjust weight based on quantity
+          // This is a simplification, in real app you might have more complex logic
+          payload = { quantity: newQuantity };
+        } else if (foodCategory === 'Packaged Items') {
+          payload = { quantity: newQuantity };
+        } else {
+          payload = { quantity: newQuantity }; // Default to quantity for backward compatibility
+        }
+
         const response = await fetch(`${API_BASE_URL}/cart/items/${foodDonationId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quantity: newQuantity }),
+          body: JSON.stringify(payload),
           credentials: 'include'
         });
 
@@ -95,7 +120,7 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
     [cart, fetchCart, onCartUpdate]
   );
 
-  const handleQuantityChange = (foodDonationId: number, newQuantity: number) => {
+  const handleQuantityChange = (foodDonationId: number, newQuantity: number, foodCategory: string) => {
     if (newQuantity < 1) return;
     // Update local state immediately
     setLocalQuantities(prev => ({
@@ -103,7 +128,7 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
       [foodDonationId]: newQuantity
     }));
     // Debounce API call
-    debouncedUpdateQuantity(foodDonationId, newQuantity);
+    debouncedUpdateQuantity(foodDonationId, newQuantity, foodCategory);
   };
 
   const removeItem = async (foodDonationId: number) => {
@@ -181,6 +206,34 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
     }
   };
 
+  // Helper function to get the appropriate quantity display label based on food category
+  const getQuantityLabel = (item: CartItem) => {
+    switch (item.foodCategory) {
+      case 'Cooked Meal':
+        return 'Servings';
+      case 'Raw Ingredients':
+        return 'Quantity';
+      case 'Packaged Items':
+        return 'Items';
+      default:
+        return 'Quantity';
+    }
+  };
+
+  // Helper function to get additional item details based on food category
+  const renderItemDetails = (item: CartItem) => {
+    switch (item.foodCategory) {
+      case 'Cooked Meal':
+        return item.servings && <p className="text-xs text-gray-500">Servings: {item.servings}</p>;
+      case 'Raw Ingredients':
+        return item.weight_kg && <p className="text-xs text-gray-500">Weight: {item.weight_kg} kg</p>;
+      case 'Packaged Items':
+        return item.package_size && <p className="text-xs text-gray-500">Package Size: {item.package_size}</p>;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div 
       className={`fixed inset-0 z-50 ${isOpen ? 'visible' : 'invisible'}`}
@@ -239,9 +292,15 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <h3 className="font-medium text-gray-900">{item.foodType}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-gray-900">{item.foodType}</h3>
+                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                          {item.foodCategory}
+                        </span>
+                      </div>
                       <p className="text-sm text-gray-600">From: {item.donorName}</p>
                       <p className="text-sm text-gray-600">Pickup: {item.pickupLocation}</p>
+                      {renderItemDetails(item)}
                     </div>
                     <button
                       onClick={() => removeItem(item.foodDonationId)}
@@ -255,7 +314,8 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                     <button
                       onClick={() => handleQuantityChange(
                         item.foodDonationId,
-                        Math.max(1, (localQuantities[item.foodDonationId] || item.quantity) - 1)
+                        Math.max(1, (localQuantities[item.foodDonationId] || 1) - 1),
+                        item.foodCategory
                       )}
                       className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                       aria-label="Decrease quantity"
@@ -263,18 +323,20 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                       <Minus className="w-4 h-4" />
                     </button>
                     <span className="w-12 text-center">
-                      {localQuantities[item.foodDonationId] || item.quantity}
+                      {localQuantities[item.foodDonationId] || 1}
                     </span>
                     <button
                       onClick={() => handleQuantityChange(
                         item.foodDonationId,
-                        (localQuantities[item.foodDonationId] || item.quantity) + 1
+                        (localQuantities[item.foodDonationId] || 1) + 1,
+                        item.foodCategory
                       )}
                       className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                       aria-label="Increase quantity"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
+                    <span className="text-xs text-gray-500 ml-1">{getQuantityLabel(item)}</span>
                   </div>
                 </div>
               ))}

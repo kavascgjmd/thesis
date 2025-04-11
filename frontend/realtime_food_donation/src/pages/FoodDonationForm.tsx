@@ -1,6 +1,6 @@
-import React from 'react';
+import  { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card/Card';
 import { Alert, AlertDescription } from '../components/ui/alert/Alert';
@@ -9,27 +9,83 @@ import { Input } from '../components/ui/input/Input';
 import { Label } from '../components/ui/label/Label';
 import { Textarea } from '../components/ui/textarea/TextArea';
 import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
+import { RadioGroup, RadioGroupItem } from '../components/ui/alert/RadioGroup';
 
+// Updated schema to handle different food categories
 const foodDonationSchema = z.object({
   food_type: z.string().min(3, "Food type must be at least 3 characters").max(50, "Food type must be less than 50 characters"),
-  quantity: z.number().positive("Quantity must be a positive number"),
+  food_category: z.enum(["Cooked Meal", "Raw Ingredients", "Packaged Items"], {
+    required_error: "Please select a food category",
+  }),
+  // Fields for different categories - properly handled as optional
+  servings: z.union([
+    z.number().positive("Number of servings must be positive"),
+    z.string().transform(val => val === "" ? undefined : Number(val))
+  ]).optional(),
+  weight_kg: z.union([
+    z.number().positive("Weight must be positive"), 
+    z.string().transform(val => val === "" ? undefined : Number(val))
+  ]).optional(),
+  quantity: z.union([
+    z.number().positive("Quantity must be positive"),
+    z.string().transform(val => val === "" ? undefined : Number(val))
+  ]).optional(),
+  package_size: z.string().optional(),
   expiration_time: z.string().min(1, "Expiration time is required"),
   pickup_location: z.string().min(5, "Pickup location must be at least 5 characters").max(255, "Pickup location is too long"),
   availability_schedule: z.string().min(5, "Availability schedule must be at least 5 characters").max(255, "Availability schedule is too long"),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
+}).superRefine((data, ctx) => {
+  // Better conditional validation based on food category
+  if (data.food_category === "Cooked Meal" && 
+      (data.servings === undefined || data.servings <= 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Number of servings is required for Cooked Meals",
+      path: ["servings"]
+    });
+  }
+  
+  if (data.food_category === "Raw Ingredients" && 
+      (data.weight_kg === undefined || data.weight_kg <= 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Weight in kg is required for Raw Ingredients",
+      path: ["weight_kg"]
+    });
+  }
+  
+  if (data.food_category === "Packaged Items") {
+    if (data.quantity === undefined || data.quantity <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Quantity is required for Packaged Items",
+        path: ["quantity"]
+      });
+    }
+    
+    if (!data.package_size || data.package_size.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Package size is required for Packaged Items",
+        path: ["package_size"]
+      });
+    }
+  }
 });
 
 type FoodDonationForm = z.infer<typeof foodDonationSchema>;
 
 const DonorFoodForm = () => {
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const {
     register,
     handleSubmit,
+    control,
     reset,
     watch,
     setValue,
@@ -38,12 +94,19 @@ const DonorFoodForm = () => {
     resolver: zodResolver(foodDonationSchema),
     defaultValues: {
       food_type: '',
+      food_category: undefined,
+      servings: undefined,
+      weight_kg: undefined,
       quantity: undefined,
+      package_size: '',
       expiration_time: '',
       pickup_location: '',
       availability_schedule: '',
     }
   });
+
+  // Watch the food category to show/hide relevant fields
+  const selectedFoodCategory = watch('food_category');
 
   const handlePickupLocationChange = (address: string, coordinates?: { lat: number; lng: number }) => {
     setValue('pickup_location', address, { shouldValidate: true });
@@ -56,6 +119,7 @@ const DonorFoodForm = () => {
   };
 
   const onSubmit = async (data: FoodDonationForm) => {
+    
     setIsSubmitting(true);
     setError(null);
     setSuccess(false);
@@ -117,19 +181,100 @@ const DonorFoodForm = () => {
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="quantity">Quantity (servings)</Label>
-            <Input
-              id="quantity"
-              type="number"
-              placeholder="Number of servings"
-              {...register('quantity', { valueAsNumber: true })}
-              className={errors.quantity ? 'border-red-500' : ''}
+          <div className="space-y-3">
+            <Label>Food Category</Label>
+            <Controller
+              name="food_category"
+              control={control}
+              render={({ field }) => (
+                <RadioGroup
+                  onValueChange={field.onChange}
+                  value={field.value}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="Cooked Meal" id="cooked_meal" />
+                    <Label htmlFor="cooked_meal">Cooked Meal</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="Raw Ingredients" id="raw_ingredients" />
+                    <Label htmlFor="raw_ingredients">Raw Ingredients</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="Packaged Items" id="packaged_items" />
+                    <Label htmlFor="packaged_items">Packaged Items</Label>
+                  </div>
+                </RadioGroup>
+              )}
             />
-            {errors.quantity && (
-              <p className="text-sm text-red-500">{errors.quantity.message}</p>
+            {errors.food_category && (
+              <p className="text-sm text-red-500">{errors.food_category.message}</p>
             )}
           </div>
+
+          {/* Conditional fields based on food category */}
+          {selectedFoodCategory === "Cooked Meal" && (
+            <div className="space-y-2">
+              <Label htmlFor="servings">Number of Servings</Label>
+              <Input
+                id="servings"
+                type="number"
+                placeholder="e.g., 10"
+                {...register('servings', { valueAsNumber: true })}
+                className={errors.servings ? 'border-red-500' : ''}
+              />
+              {errors.servings && (
+                <p className="text-sm text-red-500">{errors.servings.message}</p>
+              )}
+            </div>
+          )}
+
+          {selectedFoodCategory === "Raw Ingredients" && (
+            <div className="space-y-2">
+              <Label htmlFor="weight_kg">Weight (kg)</Label>
+              <Input
+                id="weight_kg"
+                type="number"
+                step="0.01"
+                placeholder="e.g., 5.5"
+                {...register('weight_kg', { valueAsNumber: true })}
+                className={errors.weight_kg ? 'border-red-500' : ''}
+              />
+              {errors.weight_kg && (
+                <p className="text-sm text-red-500">{errors.weight_kg.message}</p>
+              )}
+            </div>
+          )}
+
+          {selectedFoodCategory === "Packaged Items" && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  placeholder="e.g., 12"
+                  {...register('quantity', { valueAsNumber: true })}
+                  className={errors.quantity ? 'border-red-500' : ''}
+                />
+                {errors.quantity && (
+                  <p className="text-sm text-red-500">{errors.quantity.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="package_size">Package Size</Label>
+                <Input
+                  id="package_size"
+                  placeholder="e.g., 500g, 1L, Small box"
+                  {...register('package_size')}
+                  className={errors.package_size ? 'border-red-500' : ''}
+                />
+                {errors.package_size && (
+                  <p className="text-sm text-red-500">{errors.package_size.message}</p>
+                )}
+              </div>
+            </>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="expiration_time">Expiration Time</Label>

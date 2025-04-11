@@ -6,14 +6,36 @@ import { UserPayload } from '../types/custom';
 
 const router = Router();
 
-// Validation schema for food donation
-const foodDonationSchema = z.object({
+// First create the base object schema
+const baseFoodDonationSchema = z.object({
   food_type: z.string().min(3).max(50),
-  quantity: z.number().positive(),
-  expiration_time: z.coerce.date(), // This will be more forgiving with datetime formats
+  food_category: z.enum(['Cooked Meal', 'Raw Ingredients', 'Packaged Items']),
+  // Different fields based on food category
+  servings: z.number().positive().optional(),
+  weight_kg: z.number().positive().optional(),
+  quantity: z.number().positive().optional(),
+  package_size: z.string().optional(),
+  expiration_time: z.coerce.date(),
   pickup_location: z.string().min(5).max(255),
   image: z.string().nullable().optional(),
   availability_schedule: z.string().min(5).max(255)
+});
+
+// Then create the validation schema with refinement
+const foodDonationSchema = baseFoodDonationSchema.refine(data => {
+  // Validate that the appropriate quantity field is provided based on food category
+  if (data.food_category === 'Cooked Meal' && data.servings === undefined) {
+    return false;
+  }
+  if (data.food_category === 'Raw Ingredients' && data.weight_kg === undefined) {
+    return false;
+  }
+  if (data.food_category === 'Packaged Items' && (data.quantity === undefined || data.package_size === undefined)) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Required quantity fields missing for selected food category"
 });
 
 // Get all available food donations
@@ -124,15 +146,38 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const { food_type, quantity, expiration_time, pickup_location, image, availability_schedule } = validationResult.data;
+    const { 
+      food_type,
+      food_category,
+      servings,
+      weight_kg,
+      quantity,
+      package_size,
+      expiration_time, 
+      pickup_location, 
+      image, 
+      availability_schedule 
+    } = validationResult.data;
 
-    // Create food donation
+    // Create food donation with new fields
     const insertQuery = await query(
       `INSERT INTO food_donations 
-       (donor_id, food_type, quantity, expiration_time, pickup_location, image, availability_schedule, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'AVAILABLE')
+       (donor_id, food_type, food_category, servings, weight_kg, quantity, package_size, expiration_time, pickup_location, image, availability_schedule, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'AVAILABLE')
        RETURNING *`,
-      [donorQuery.rows[0].id, food_type, quantity, expiration_time, pickup_location, image, availability_schedule]
+      [
+        donorQuery.rows[0].id, 
+        food_type, 
+        food_category, 
+        servings, 
+        weight_kg, 
+        quantity, 
+        package_size,
+        expiration_time, 
+        pickup_location, 
+        image, 
+        availability_schedule
+      ]
     );
 
     res.status(201).json({
@@ -181,7 +226,8 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
     }
 
     // Validate input
-    const validationResult = foodDonationSchema.partial().safeParse(req.body);
+   // In the update route
+const validationResult = baseFoodDonationSchema.partial().safeParse(req.body);
     if (!validationResult.success) {
       res.status(400).json({
         success: false,
@@ -191,11 +237,13 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
       return;
     }
 
-    const updateFields = validationResult.data;
-    const updates = Object.entries(updateFields)
+    const updateData = validationResult.data;
+    
+    // Convert object to array of fields and values for dynamic SQL
+    const updates = Object.entries(updateData)
       .filter(([_, value]) => value !== undefined)
       .map(([key, _], index) => `${key} = $${index + 1}`);
-    const values = Object.values(updateFields).filter(value => value !== undefined);
+    const values = Object.values(updateData).filter(value => value !== undefined);
 
     if (updates.length === 0) {
       res.status(400).json({

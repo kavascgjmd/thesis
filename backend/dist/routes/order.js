@@ -157,6 +157,7 @@ router.get('/:id', (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             return res.status(403).json({ success: false, message: 'You do not have permission to view this order' });
         }
         // Format the response according to the client's expected interface
+        // Now including the new food donation fields
         const formattedOrder = {
             id: order.id,
             orderStatus: order.orderStatus,
@@ -166,9 +167,15 @@ router.get('/:id', (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             deliveryAddress: order.deliveryAddress,
             items: order.items.map(item => ({
                 food_type: item.foodType,
+                food_category: item.foodCategory, // New field
                 donor_name: item.donorName,
                 quantity: item.quantity,
-                pickup_location: item.pickupLocation
+                // Add new fields based on food category
+                servings: item.servings,
+                weightKg: item.weightKg,
+                packageSize: item.packageSize,
+                pickupLocation: item.pickupLocation,
+                expirationTime: item.expirationTime
             })),
             route: order.route ? {
                 path: order.route.path.map(point => ({
