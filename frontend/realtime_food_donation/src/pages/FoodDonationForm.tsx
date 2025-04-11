@@ -1,4 +1,4 @@
-import  { useState } from 'react';
+import React ,{ useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
@@ -7,11 +7,11 @@ import { Alert, AlertDescription } from '../components/ui/alert/Alert';
 import { Button } from '../components/ui/button/Button';
 import { Input } from '../components/ui/input/Input';
 import { Label } from '../components/ui/label/Label';
-import { Textarea } from '../components/ui/textarea/TextArea';
 import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
 import { RadioGroup, RadioGroupItem } from '../components/ui/alert/RadioGroup';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select/Select';
 
-// Updated schema to handle different food categories
+// Updated schema to handle different food categories and structured availability schedule
 const foodDonationSchema = z.object({
   food_type: z.string().min(3, "Food type must be at least 3 characters").max(50, "Food type must be less than 50 characters"),
   food_category: z.enum(["Cooked Meal", "Raw Ingredients", "Packaged Items"], {
@@ -33,7 +33,16 @@ const foodDonationSchema = z.object({
   package_size: z.string().optional(),
   expiration_time: z.string().min(1, "Expiration time is required"),
   pickup_location: z.string().min(5, "Pickup location must be at least 5 characters").max(255, "Pickup location is too long"),
-  availability_schedule: z.string().min(5, "Availability schedule must be at least 5 characters").max(255, "Availability schedule is too long"),
+  
+  // New fields for structured availability schedule
+  start_day: z.string().min(1, "Start day is required"),
+  end_day: z.string().min(1, "End day is required"),
+  start_time: z.string().min(1, "Start time is required"),
+  end_time: z.string().min(1, "End time is required"),
+  
+  // Keep the original field for backend compatibility
+  availability_schedule: z.string(),
+  
   latitude: z.number().optional(),
   longitude: z.number().optional(),
 }).superRefine((data, ctx) => {
@@ -77,6 +86,34 @@ const foodDonationSchema = z.object({
 
 type FoodDonationForm = z.infer<typeof foodDonationSchema>;
 
+// Day options for the select
+const dayOptions = [
+  { value: "mon", label: "Monday" },
+  { value: "tue", label: "Tuesday" },
+  { value: "wed", label: "Wednesday" },
+  { value: "thu", label: "Thursday" },
+  { value: "fri", label: "Friday" },
+  { value: "sat", label: "Saturday" },
+  { value: "sun", label: "Sunday" },
+];
+
+// Function to format day and time into the required format
+const formatAvailabilitySchedule = (startDay: string, endDay: string, startTime: string, endTime: string): string => {
+  // Capitalize first letter of day abbreviations
+  const formatDay = (day: string) => day.charAt(0).toUpperCase() + day.slice(1, 3);
+  
+  // Format time to ensure proper AM/PM format
+  const formatTime = (time: string) => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const formattedHour = hour % 12 || 12;
+    return `${formattedHour.toString().padStart(2, '0')}:${minutes}${ampm}`;
+  };
+
+  return `${formatDay(startDay)}-${formatDay(endDay)} ${formatTime(startTime)}-${formatTime(endTime)}`;
+};
+
 const DonorFoodForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,12 +138,30 @@ const DonorFoodForm = () => {
       package_size: '',
       expiration_time: '',
       pickup_location: '',
-      availability_schedule: '',
+      start_day: 'mon',
+      end_day: 'fri',
+      start_time: '09:00',
+      end_time: '17:00',
+      availability_schedule: 'Mon-Fri 09:00AM-05:00PM',
     }
   });
 
   // Watch the food category to show/hide relevant fields
   const selectedFoodCategory = watch('food_category');
+  
+  // Watch schedule fields to update availability_schedule
+  const startDay = watch('start_day');
+  const endDay = watch('end_day');
+  const startTime = watch('start_time');
+  const endTime = watch('end_time');
+
+  // Update availability_schedule when schedule fields change
+  React.useEffect(() => {
+    if (startDay && endDay && startTime && endTime) {
+      const formattedSchedule = formatAvailabilitySchedule(startDay, endDay, startTime, endTime);
+      setValue('availability_schedule', formattedSchedule);
+    }
+  }, [startDay, endDay, startTime, endTime, setValue]);
 
   const handlePickupLocationChange = (address: string, coordinates?: { lat: number; lng: number }) => {
     setValue('pickup_location', address, { shouldValidate: true });
@@ -119,7 +174,6 @@ const DonorFoodForm = () => {
   };
 
   const onSubmit = async (data: FoodDonationForm) => {
-    
     setIsSubmitting(true);
     setError(null);
     setSuccess(false);
@@ -302,17 +356,102 @@ const DonorFoodForm = () => {
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="availability_schedule">Availability Schedule</Label>
-            <Textarea
-              id="availability_schedule"
-              placeholder="e.g., Monday-Friday, 9 AM - 5 PM"
-              {...register('availability_schedule')}
-              className={errors.availability_schedule ? 'border-red-500' : ''}
-            />
-            {errors.availability_schedule && (
-              <p className="text-sm text-red-500">{errors.availability_schedule.message}</p>
-            )}
+          {/* New structured availability schedule section */}
+          <div className="space-y-4">
+            <Label>Availability Schedule</Label>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start_day">Start Day</Label>
+                <Controller
+                  name="start_day"
+                  control={control}
+                  render={({ field }) => (
+                    <Select 
+                      value={field.value} 
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select start day" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {dayOptions.map(day => (
+                          <SelectItem key={day.value} value={day.value}>
+                            {day.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.start_day && (
+                  <p className="text-sm text-red-500">{errors.start_day.message}</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="end_day">End Day</Label>
+                <Controller
+                  name="end_day"
+                  control={control}
+                  render={({ field }) => (
+                    <Select 
+                      value={field.value} 
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select end day" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {dayOptions.map(day => (
+                          <SelectItem key={day.value} value={day.value}>
+                            {day.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.end_day && (
+                  <p className="text-sm text-red-500">{errors.end_day.message}</p>
+                )}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start_time">Start Time</Label>
+                <Input
+                  id="start_time"
+                  type="time"
+                  {...register('start_time')}
+                  className={errors.start_time ? 'border-red-500' : ''}
+                />
+                {errors.start_time && (
+                  <p className="text-sm text-red-500">{errors.start_time.message}</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="end_time">End Time</Label>
+                <Input
+                  id="end_time"
+                  type="time"
+                  {...register('end_time')}
+                  className={errors.end_time ? 'border-red-500' : ''}
+                />
+                {errors.end_time && (
+                  <p className="text-sm text-red-500">{errors.end_time.message}</p>
+                )}
+              </div>
+            </div>
+            
+            <div className="mt-2 text-sm text-gray-500">
+              Format: {watch('availability_schedule')}
+            </div>
+            
+            {/* Hidden field to store formatted availability schedule */}
+            <input type="hidden" {...register('availability_schedule')} />
           </div>
 
           <Button
