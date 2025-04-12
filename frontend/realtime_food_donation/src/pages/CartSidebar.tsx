@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { AlertCircle, Minus, Plus, ShoppingCart, Trash2, User, MapPin } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert/Alert';
 import { debounce } from 'lodash';
 import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
@@ -43,9 +43,15 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
       const response = await fetch(`${API_BASE_URL}/cart`, {
         credentials: 'include'
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
       const data = await response.json();
       
       if (data.success) {
+        console.log('Cart data received:', data.cart.items); // Debug log
         setCart(data.cart.items || []);
         // Initialize local quantities
         const quantities: Record<number, number> = {};
@@ -64,6 +70,7 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
         setError('Failed to fetch cart items');
       }
     } catch (err) {
+      console.error('Error loading cart:', err);
       setError('Error loading cart');
     } finally {
       setLoading(false);
@@ -293,13 +300,24 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-gray-900">{item.foodType}</h3>
+                        <h3 className="font-medium text-gray-900">{item.foodType || 'Unknown Food Item'}</h3>
                         <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                          {item.foodCategory}
+                          {item.foodCategory || 'Uncategorized'}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600">From: {item.donorName}</p>
-                      <p className="text-sm text-gray-600">Pickup: {item.pickupLocation}</p>
+                      
+                      {/* Donor information with icon and fallback */}
+                      <div className="flex items-center text-sm text-gray-600 mt-1">
+                        <User className="w-3 h-3 mr-1 text-gray-500" />
+                        <span>From: {item.donorName || 'Unknown Donor'}</span>
+                      </div>
+                      
+                      {/* Pickup location with icon and fallback */}
+                      <div className="flex items-center text-sm text-gray-600 mt-1">
+                        <MapPin className="w-3 h-3 mr-1 text-gray-500" />
+                        <span>Pickup: {item.pickupLocation || 'Location not specified'}</span>
+                      </div>
+                      
                       {renderItemDetails(item)}
                     </div>
                     <button

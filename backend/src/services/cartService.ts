@@ -61,13 +61,68 @@ class CartService {
       const cartKey = this.getCartKey(userId, cartId);
       const cartData = await redisClient.get(cartKey);
       if (!cartData) return null;
-
+  
       const cart = JSON.parse(cartData);
-
+  
       // Update last accessed timestamp
       cart.lastAccessed = Date.now();
       await redisClient.set(cartKey, JSON.stringify(cart), { EX: this.CART_EXPIRY });
-
+  
+      // Fetch additional information for each food donation in the cart
+      if (cart.items && cart.items.length > 0) {
+        const foodDonationIds = cart.items.map((item: CartItem) => item.foodDonationId);
+        
+        // Query to get food donation details with donor information
+        const donationsResult = await query(
+          `SELECT 
+            fd.id AS food_donation_id, 
+            fd.food_type,
+            fd.food_category,
+            fd.pickup_location,
+            fd.servings,
+            fd.weight_kg,
+            fd.package_size,
+            u.username AS donor_name
+          FROM food_donations fd
+          JOIN donors d ON fd.donor_id = d.id
+          JOIN users u ON d.user_id = u.id
+          WHERE fd.id = ANY($1::int[])`,
+          [foodDonationIds]
+        );
+        
+        // Create a map for quick lookup
+        const donationDetailsMap = new Map();
+        donationsResult.rows.forEach(row => {
+          donationDetailsMap.set(row.food_donation_id, {
+            foodType: row.food_type,
+            foodCategory: row.food_category,
+            pickupLocation: row.pickup_location,
+            servings: row.servings,
+            weightKg: row.weight_kg,
+            packageSize: row.package_size,
+            donorName: row.donor_name
+          });
+        });
+        
+        // Enrich cart items with donation details
+        cart.items = cart.items.map((item: CartItem) => {
+          const details = donationDetailsMap.get(item.foodDonationId);
+          if (details) {
+            return {
+              ...item,
+              foodType: details.foodType,
+              foodCategory: details.foodCategory,
+              donorName: details.donorName,
+              pickupLocation: details.pickupLocation,
+              servings: details.servings,
+              weightKg: details.weightKg,
+              packageSize: details.packageSize
+            };
+          }
+          return item;
+        });
+      }
+  
       return {
         ...cart,
         status: cart.status || 'PENDING',
