@@ -1,6 +1,6 @@
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Check, AlertCircle, Search } from 'lucide-react';
+import { X, Check, AlertCircle, Search, Upload, FileImage } from 'lucide-react';
 import axios from 'axios';
 const BASE_URL = 'http://localhost:3000';
 type UserRole = 'Admin' | 'Donor' | 'NGO' | 'Recipient';
@@ -43,6 +43,8 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
   const [searchQuery, setSearchQuery] = useState('');
   const [countries, setCountries] = useState<Country[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
     username: '',
@@ -206,6 +208,24 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
 
     if (name === 'profile_picture' && 'files' in e.target && e.target.files?.[0]) {
       const file = e.target.files[0];
+      setImageUploadError(null);
+
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        setImageUploadError('Unsupported file type. Please upload a JPEG, PNG, GIF, or WEBP image.');
+        return;
+      }
+
+      // Validate file size (client-side validation, server will also validate)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        setImageUploadError(`File size exceeds 5MB limit. Large images will be stored locally instead of S3.`);
+      }
+
+      // Create a preview
+      const objectUrl = URL.createObjectURL(file);
+      setImagePreview(objectUrl);
 
       // Convert file to base64
       const base64 = await new Promise<string>((resolve) => {
@@ -231,6 +251,16 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
     }
   };
 
+  const clearProfilePicture = () => {
+    setFormData(prev => ({
+      ...prev,
+      profile_picture: null,
+      profile_picture_base64: null
+    }));
+    setImagePreview(null);
+    setImageUploadError(null);
+  };
+
   const isPasswordValid = (): boolean => {
     return Object.values(validationStates).every(state => state);
   };
@@ -251,8 +281,6 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
         address: formData.address,
         profile_picture: formData.profile_picture_base64
       };
-
-      console.log('Sending payload:', payload);
 
       const response = await axios.post(`${BASE_URL}/api/user/signup`, payload, {
         headers: {
@@ -286,7 +314,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
         withCredentials: true
       });
 
-      if (response.data.message === 'Registration successful. You can now sign in.') {
+      if (response.data.message === 'Registration successful. You are now signed in.') {
         setIsAuthenticated(true);
         onClose();
         navigate('/profile', { replace: true });
@@ -330,7 +358,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
       onClick={handleBackdropClick}
     >
       <div
-        className="modal-content bg-white w-[420px] rounded-lg shadow-xl p-6 relative animate-modalFade"
+        className="modal-content bg-white w-[420px] rounded-lg shadow-xl p-6 relative animate-modalFade overflow-y-auto max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
         <button
@@ -510,15 +538,53 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
                 />
               </div>
 
-              <div>
-                <input
-                  type="file"
-                  name="profile_picture"
-                  accept="image/*"
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  disabled={isLoading}
-                />
+              {/* Enhanced profile picture upload with preview */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Profile Picture</label>
+                
+                {imagePreview ? (
+                  <div className="relative mt-2">
+                    <img 
+                      src={imagePreview} 
+                      alt="Profile preview" 
+                      className="w-32 h-32 object-cover rounded-full mx-auto border-2 border-gray-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={clearProfilePicture}
+                      className="absolute top-0 right-1/3 bg-red-500 text-white rounded-full p-1"
+                      disabled={isLoading}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2">
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <Upload className="w-8 h-8 text-gray-500 mb-1" />
+                        <p className="mb-2 text-sm text-gray-500">Click to upload</p>
+                        <p className="text-xs text-gray-500">JPEG, PNG, GIF, or WEBP</p>
+                      </div>
+                      <input 
+                        type="file"
+                        name="profile_picture"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        onChange={handleChange}
+                        className="hidden"
+                        disabled={isLoading}
+                      />
+                    </label>
+                  </div>
+                )}
+                
+                {imageUploadError && (
+                  <p className="text-xs text-amber-600 mt-1">{imageUploadError}</p>
+                )}
+                
+                <p className="text-xs text-gray-500 mt-1">
+                  Images over 5MB will be stored locally instead of in S3.
+                </p>
               </div>
 
               <button

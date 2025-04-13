@@ -28,8 +28,10 @@ const driver_locations_1 = require("./driver_locations");
 const delivery_routes_1 = require("./delivery_routes");
 const route_points_1 = require("./route_points");
 const drivers_1 = require("./drivers");
+const verification_logs_1 = require("./verification_logs");
 function createAllTables() {
     return __awaiter(this, void 0, void 0, function* () {
+        yield (0, verification_logs_1.createVerficationLogsTable)();
         yield (0, driver_locations_1.createDriverLocationsTable)();
         yield (0, delivery_routes_1.createDeliveryRoutesTable)();
         yield (0, route_points_1.createRoutePointsTable)();

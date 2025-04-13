@@ -18,9 +18,7 @@ interface JwtPayload {
 router.post('/signup', rateLimiterMiddleware, async (req: SignupRequest, res: Response): Promise<any> => {
     try {
         const validationResult = userSchema.safeParse(req.body);
-
         if (!validationResult.success) {
-            console.log(req.body);
             return res.status(400).json({
                 status: 'error',
                 message: 'Invalid input data',
@@ -32,7 +30,6 @@ router.post('/signup', rateLimiterMiddleware, async (req: SignupRequest, res: Re
         }
 
         const userData = validationResult.data;
-
         // Check for existing user
         const existingUser = await userService.checkUser(userData.username, '');
         if (existingUser) {
@@ -84,13 +81,33 @@ router.post('/verify-otp', rateLimiterMiddleware, verifyOtpMiddleware, async (re
                 message: 'Registration session expired. Please start over.' 
             });
         }
-
-        await userService.insertUser(tempUser);
+        
+        const userId = await userService.insertUser(tempUser);
         await userService.deleteTempUser(phone);
         await redisClient.del(`otp:${phone}`);
 
+        // Generate token now that user is created
+        const token = jwt.sign(
+            { id: userId, role: tempUser.role },
+            process.env.JWT_SECRET as string,
+            { expiresIn: '24h' }
+        );
+
+        // Set the token in a cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        });
+
         return res.status(201).json({ 
-            message: 'Registration successful. You can now sign in.' 
+            message: 'Registration successful. You are now signed in.',
+            user: {
+                username: tempUser.username,
+                email: tempUser.email,
+                role: tempUser.role
+            }
         });
     } catch (error) {
         console.error('Verification error:', error);
@@ -127,7 +144,8 @@ router.post('/signin', rateLimiterMiddleware, async (req: Request, res: Response
             user: {
                 username: user.username,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                profile_picture_url: user.profile_picture_url
             }
         });
     } catch (error) {
@@ -171,7 +189,8 @@ router.get('/verify', async (req: Request, res: Response): Promise<any> => {
             user: {
                 username: user.username,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                profile_picture_url: user.profile_picture_url
             }
         });
 

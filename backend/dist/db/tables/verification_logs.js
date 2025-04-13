@@ -9,32 +9,28 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createUserTable = createUserTable;
+exports.createVerficationLogsTable = createVerficationLogsTable;
 const util_1 = require("../util");
-function createUserTable() {
+function createVerficationLogsTable() {
     return __awaiter(this, void 0, void 0, function* () {
-        const createUserTableQuery = `
-       CREATE TABLE IF NOT EXISTS users (
+        const createVerficationLogsTableQuery = `
+ CREATE TABLE IF NOT EXISTS verification_logs (
     id SERIAL PRIMARY KEY,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    phone VARCHAR(50),
-    role VARCHAR(50),
-    profile_picture VARCHAR(255),
-    profile_picture_url VARCHAR(255),
-    profile_picture_storage VARCHAR(50),
-    address TEXT,
+    entity_type VARCHAR(50) NOT NULL, -- 'ngo', 'donor', or 'recipient'
+    entity_id INTEGER NOT NULL,
+    verified_by INTEGER REFERENCES users(id),
+    verification_notes TEXT,
+    status VARCHAR(50) NOT NULL, -- 'pending', 'approved', 'rejected'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
     `;
         try {
-            yield (0, util_1.query)(createUserTableQuery);
-            console.log('User table created successfully');
+            yield (0, util_1.query)(createVerficationLogsTableQuery);
+            console.log('Recipient table created successfully');
         }
         catch (error) {
-            console.error('Error creating user table:', error);
+            console.error('Error creating recipient table:', error);
             throw error;
         }
     });

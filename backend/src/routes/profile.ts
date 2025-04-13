@@ -10,8 +10,6 @@ const router = Router();
 
 // Configure email transporter
 const transporter = nodemailer.createTransport({
-  // For production, use your actual SMTP credentials
-  // For development/testing, you can use services like Ethereal, Mailtrap, or a local SMTP server
   host: process.env.SMTP_HOST || 'smtp.mailtrap.io',
   port: Number(process.env.SMTP_PORT) || 2525,
   secure: process.env.SMTP_SECURE === 'true',
@@ -41,7 +39,7 @@ async function sendEmail(to: string, subject: string, text: string, html: string
   }
 }
 
-// Validation schemas remain the same
+// Validation schemas with updated fields
 const basicProfileSchema = z.object({
   username: z.string().min(3).max(255),
   email: z.string().email().max(255),
@@ -59,21 +57,50 @@ const donorDetailsSchema = z.object({
   operating_hours: z.string().max(255)
 });
 
+// Updated NGO schema with new verification fields
 const ngoDetailsSchema = z.object({
   ngo_name: z.string().max(255),
   mission_statement: z.string(),
   contact_person: z.string().max(255),
   contact_number: z.string().max(50),
   operating_hours: z.string().max(255),
-  target_demographics: z.string()
+  target_demographics: z.string(),
+  // New fields from the updated schema
+  ngo_type: z.string().max(50).optional(),
+  registration_number: z.string().max(100).optional(),
+  registration_certificate: z.string().max(255).optional(),
+  pan_number: z.string().max(20).optional(),
+  pan_card_image: z.string().max(255).optional(),
+  fcra_number: z.string().max(100).optional(),
+  fcra_certificate: z.string().max(255).optional(),
+  tax_exemption_certificate: z.string().max(255).optional(),
+  annual_reports_link: z.string().max(255).optional()
 });
 
+// Updated recipient schema with new verification fields
 const recipientDetailsSchema = z.object({
   recipient_name: z.string().max(255),
   recipient_details: z.string(),
   contact_person: z.string().max(255),
-  contact_number: z.string().max(50)
+  contact_number: z.string().max(50),
+  // New fields from the updated schema
+  id_type: z.string().max(50).optional(),
+  id_number: z.string().max(100).optional(),
+  id_image: z.string().max(255).optional(),
+  address: z.string().optional(),
+  proof_of_need: z.string().optional()
 });
+
+// Define types for validation results
+type BasicProfileData = z.infer<typeof basicProfileSchema>;
+type DonorDetailsData = z.infer<typeof donorDetailsSchema>;
+type NGODetailsData = z.infer<typeof ngoDetailsSchema>;
+type RecipientDetailsData = z.infer<typeof recipientDetailsSchema>;
+
+// Type for role-specific queries
+interface RoleQueryResult {
+  rows: any[];
+}
 
 // Get user profile with role-specific details
 router.get('/', authMiddleware, async (req: Request, res: Response): Promise<any> => {
@@ -202,7 +229,6 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
     return res.status(500).json({ 
       success: false,
       message: 'Failed to update profile',
-      
     });
   }
 });
@@ -217,9 +243,17 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
       });
     }
 
-    let validationResult;
-    let updateQuery;
-    let existingRecord;
+    // Define type union for validation results
+    type ValidationResult = 
+      | { success: true; data: DonorDetailsData } 
+      | { success: true; data: NGODetailsData }
+      | { success: true; data: RecipientDetailsData }
+      | { success: false; error: z.ZodError };
+    
+    let validationResult: ValidationResult | null = null;
+    let existingRecord: RoleQueryResult | null = null;
+    let updateQuery: any = null;
+    let verificationNeeded = false;
 
     switch (user.role.toUpperCase()) {
       case 'DONOR':
@@ -229,17 +263,17 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           [user.id]
         );
 
-        validationResult = donorDetailsSchema.safeParse(req.body);
+        validationResult = donorDetailsSchema.safeParse(req.body) as ValidationResult;
         if (validationResult.success) {
           const { donor_type, organization_name, organization_details, 
-                 contact_person, contact_number, operating_hours } = validationResult.data;
+                 contact_person, contact_number, operating_hours } = validationResult.data as DonorDetailsData;
           
           if (!existingRecord.rows.length) {
             // Insert new record
             updateQuery = await query(
               `INSERT INTO donors (user_id, donor_type, organization_name, organization_details, 
-               contact_person, contact_number, operating_hours, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+               contact_person, contact_number, operating_hours, is_verified, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                RETURNING *`,
               [user.id, donor_type, organization_name, organization_details,
                contact_person, contact_number, operating_hours]
@@ -267,32 +301,77 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           [user.id]
         );
 
-        validationResult = ngoDetailsSchema.safeParse(req.body);
+        validationResult = ngoDetailsSchema.safeParse(req.body) as ValidationResult;
         if (validationResult.success) {
-          const { ngo_name, mission_statement, contact_person,
-                 contact_number, operating_hours, target_demographics } = validationResult.data;
+          const ngoData = validationResult.data as NGODetailsData;
+          const { 
+            ngo_name, mission_statement, contact_person, contact_number, 
+            operating_hours, target_demographics, ngo_type, registration_number,
+            registration_certificate, pan_number, pan_card_image, fcra_number,
+            fcra_certificate, tax_exemption_certificate, annual_reports_link
+          } = ngoData;
 
+          // Check if this is a new entry or substantial update that requires verification
           if (!existingRecord.rows.length) {
+            verificationNeeded = true;
             // Insert new record
             updateQuery = await query(
-              `INSERT INTO ngos (user_id, ngo_name, mission_statement, contact_person,
-               contact_number, operating_hours, target_demographics, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-               RETURNING *`,
-              [user.id, ngo_name, mission_statement, contact_person,
-               contact_number, operating_hours, target_demographics]
+              `INSERT INTO ngos (
+                user_id, ngo_name, mission_statement, contact_person, contact_number, 
+                operating_hours, target_demographics, ngo_type, registration_number, 
+                registration_certificate, pan_number, pan_card_image, fcra_number, 
+                fcra_certificate, tax_exemption_certificate, annual_reports_link,
+                is_verified, created_at, updated_at
+              )
+              VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+                FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+              )
+              RETURNING *`,
+              [
+                user.id, ngo_name, mission_statement, contact_person, contact_number,
+                operating_hours, target_demographics, ngo_type, registration_number,
+                registration_certificate, pan_number, pan_card_image, fcra_number,
+                fcra_certificate, tax_exemption_certificate, annual_reports_link
+              ]
             );
           } else {
+            // Check if verification fields have changed
+            const criticalFields = [
+              'registration_number', 'pan_number', 'fcra_number', 
+              'registration_certificate', 'pan_card_image', 'fcra_certificate',
+              'tax_exemption_certificate'
+            ];
+            
+            // Type-safe check for changed critical fields
+            const hasChangedCriticalFields = criticalFields.some(field => {
+              const existingValue = existingRecord?.rows[0][field];
+              const newValue = ngoData[field as keyof NGODetailsData];
+              return existingValue !== newValue;
+            });
+            
+            // If critical verification fields have changed, set verification status to false
+            verificationNeeded = hasChangedCriticalFields;
+            
             // Update existing record
             updateQuery = await query(
               `UPDATE ngos 
-               SET ngo_name = $2, mission_statement = $3, contact_person = $4,
-                   contact_number = $5, operating_hours = $6, target_demographics = $7,
-                   updated_at = CURRENT_TIMESTAMP
-               WHERE user_id = $1
-               RETURNING *`,
-              [user.id, ngo_name, mission_statement, contact_person,
-               contact_number, operating_hours, target_demographics]
+              SET ngo_name = $2, mission_statement = $3, contact_person = $4,
+                  contact_number = $5, operating_hours = $6, target_demographics = $7,
+                  ngo_type = $8, registration_number = $9, registration_certificate = $10,
+                  pan_number = $11, pan_card_image = $12, fcra_number = $13,
+                  fcra_certificate = $14, tax_exemption_certificate = $15,
+                  annual_reports_link = $16, is_verified = $17, updated_at = CURRENT_TIMESTAMP
+              WHERE user_id = $1
+              RETURNING *`,
+              [
+                user.id, ngo_name, mission_statement, contact_person, contact_number,
+                operating_hours, target_demographics, ngo_type, registration_number,
+                registration_certificate, pan_number, pan_card_image, fcra_number,
+                fcra_certificate, tax_exemption_certificate, annual_reports_link,
+                // If critical fields changed, set to false, otherwise keep existing status
+                hasChangedCriticalFields ? false : existingRecord.rows[0].is_verified
+              ]
             );
           }
         }
@@ -305,32 +384,63 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           [user.id]
         );
 
-        validationResult = recipientDetailsSchema.safeParse(req.body);
+        validationResult = recipientDetailsSchema.safeParse(req.body) as ValidationResult;
         if (validationResult.success) {
-          const { recipient_name, recipient_details,
-                 contact_person, contact_number } = validationResult.data;
+          const recipientData = validationResult.data as RecipientDetailsData;
+          const { 
+            recipient_name, recipient_details, contact_person, contact_number,
+            id_type, id_number, id_image, address, proof_of_need
+          } = recipientData;
 
+          // Check if this is a new entry or update that requires verification
           if (!existingRecord.rows.length) {
+            verificationNeeded = true;
             // Insert new record
             updateQuery = await query(
-              `INSERT INTO recipients (user_id, recipient_name, recipient_details,
-               contact_person, contact_number, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-               RETURNING *`,
-              [user.id, recipient_name, recipient_details,
-               contact_person, contact_number]
+              `INSERT INTO recipients (
+                user_id, recipient_name, recipient_details, contact_person, contact_number,
+                id_type, id_number, id_image, address, proof_of_need, is_verified,
+                created_at, updated_at
+              )
+              VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE,
+                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+              )
+              RETURNING *`,
+              [
+                user.id, recipient_name, recipient_details, contact_person, contact_number,
+                id_type, id_number, id_image, address, proof_of_need
+              ]
             );
           } else {
+            // Check if verification fields have changed
+            const criticalFields = ['id_type', 'id_number', 'id_image', 'proof_of_need'];
+            
+            // Type-safe check for changed critical fields
+            const hasChangedCriticalFields = criticalFields.some(field => {
+              const existingValue = existingRecord?.rows[0][field];
+              const newValue = recipientData[field as keyof RecipientDetailsData];
+              return existingValue !== newValue;
+            });
+            
+            // If critical verification fields have changed, set verification status to false
+            verificationNeeded = hasChangedCriticalFields;
+            
             // Update existing record
             updateQuery = await query(
               `UPDATE recipients 
-               SET recipient_name = $2, recipient_details = $3,
-                   contact_person = $4, contact_number = $5,
-                   updated_at = CURRENT_TIMESTAMP
-               WHERE user_id = $1
-               RETURNING *`,
-              [user.id, recipient_name, recipient_details,
-               contact_person, contact_number]
+              SET recipient_name = $2, recipient_details = $3, contact_person = $4, 
+                  contact_number = $5, id_type = $6, id_number = $7, id_image = $8,
+                  address = $9, proof_of_need = $10, is_verified = $11,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE user_id = $1
+              RETURNING *`,
+              [
+                user.id, recipient_name, recipient_details, contact_person, contact_number,
+                id_type, id_number, id_image, address, proof_of_need,
+                // If critical fields changed, set to false, otherwise keep existing status
+                hasChangedCriticalFields ? false : existingRecord.rows[0].is_verified
+              ]
             );
           }
         }
@@ -343,18 +453,101 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
         });
     }
 
-    if (!validationResult?.success) {
+    if (!validationResult || !validationResult.success) {
       return res.status(400).json({
         success: false,
         message: 'Invalid input data',
-        errors: validationResult?.error.errors
+        errors: validationResult ? validationResult.error.errors : 'Validation failed'
       });
+    }
+
+    // If verification is needed, send an email to admin
+    if (verificationNeeded && (user.role.toUpperCase() === 'NGO' || user.role.toUpperCase() === 'RECIPIENT')) {
+      // Get admin emails
+      const adminQuery = await query(
+        'SELECT email FROM users WHERE role = $1',
+        ['ADMIN']
+      );
+      
+      if (adminQuery.rows.length > 0) {
+        const adminEmails = adminQuery.rows.map(row => row.email).join(',');
+        const userQuery = await query(
+          'SELECT username, email FROM users WHERE id = $1',
+          [user.id]
+        );
+        
+        const username = userQuery.rows[0].username;
+        const userEmail = userQuery.rows[0].email;
+        const roleType = user.role.toUpperCase();
+        
+        // Create verification log
+        await query(
+          `INSERT INTO verification_logs (
+            entity_type, entity_id, status, verification_notes, created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [
+            roleType,
+            updateQuery.rows[0].id,
+            'PENDING',
+            `New ${roleType.toLowerCase()} registration/update requiring verification`
+          ]
+        );
+        
+        // Send notification email to admin
+        const subject = `Food Donation App - New ${roleType} Verification Required`;
+        const text = `Hello Admin,\n\nA new ${roleType.toLowerCase()} account or profile update requires your verification.\n\nUser: ${username}\nEmail: ${userEmail}\n\nPlease log in to the admin dashboard to review and verify this account.\n\nRegards,\nFood Donation App Team`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #e53e3e; border-bottom: 1px solid #e53e3e; padding-bottom: 10px;">New ${roleType} Verification Required</h2>
+            <p>Hello Admin,</p>
+            <p>A new ${roleType.toLowerCase()} account or profile update requires your verification.</p>
+            <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+              <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">User:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${username}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Email:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${userEmail}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Role:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${roleType}</td>
+              </tr>
+            </table>
+            <p>Please log in to the admin dashboard to review and verify this account.</p>
+            <p>Regards,<br>Food Donation App Team</p>
+          </div>
+        `;
+        
+        // Send email to admin(s)
+        await sendEmail(adminEmails, subject, text, html);
+        
+        // Send notification to user
+        const userSubject = `Food Donation App - Your ${roleType} Account Verification`;
+        const userText = `Hello ${username},\n\nThank you for providing your ${roleType.toLowerCase()} details. Your information has been submitted for verification. You will be notified once the verification is complete.\n\nPlease note that you won't be able to place orders until your account is verified by our team.\n\nRegards,\nFood Donation App Team`;
+        const userHtml = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #3182ce; border-bottom: 1px solid #3182ce; padding-bottom: 10px;">Account Verification in Progress</h2>
+            <p>Hello ${username},</p>
+            <p>Thank you for providing your ${roleType.toLowerCase()} details. Your information has been submitted for verification.</p>
+            <p>You will be notified once the verification is complete.</p>
+            <p><strong>Please note:</strong> You won't be able to place orders until your account is verified by our team.</p>
+            <p>Regards,<br>Food Donation App Team</p>
+          </div>
+        `;
+        
+        // Send email to user
+        await sendEmail(userEmail, userSubject, userText, userHtml);
+      }
     }
 
     return res.status(200).json({
       success: true,
       message: 'Role details updated successfully',
-      details: updateQuery?.rows[0]
+      details: updateQuery?.rows[0],
+      verification_required: verificationNeeded
     });
 
   } catch (error) {
@@ -362,7 +555,86 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
     return res.status(500).json({ 
       success: false,
       message: 'Failed to update role details',
-      
+    });
+  }
+});
+
+router.get('/verification-status', authMiddleware, async (req: Request, res: Response): Promise<any> => {
+  try {
+    const user = req.user as UserPayload;
+    if (!user?.id || !user?.role) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'Authentication required' 
+      });
+    }
+
+    // For donors, they're automatically verified (no approval needed)
+    if (user.role.toUpperCase() === 'DONOR') {
+      return res.status(200).json({
+        success: true,
+        is_verified: true,
+        can_place_orders: true,
+        message: 'Donor accounts are pre-verified'
+      });
+    }
+
+    let verificationQuery;
+    if (user.role.toUpperCase() === 'NGO') {
+      verificationQuery = await query(
+        'SELECT is_verified, verification_date FROM ngos WHERE user_id = $1',
+        [user.id]
+      );
+    } else if (user.role.toUpperCase() === 'RECIPIENT') {
+      verificationQuery = await query(
+        'SELECT is_verified, verification_date FROM recipients WHERE user_id = $1',
+        [user.id]
+      );
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user role'
+      });
+    }
+
+    if (!verificationQuery.rows.length) {
+      return res.status(200).json({
+        success: true,
+        is_verified: false,
+        can_place_orders: false,
+        message: 'Account details not found or incomplete. Please complete your profile.'
+      });
+    }
+
+    const verificationStatus = verificationQuery.rows[0];
+    
+    // Get the most recent verification log
+    const logQuery = await query(
+      `SELECT * FROM verification_logs 
+       WHERE entity_type = $1 AND entity_id = (
+         SELECT id FROM ${user.role.toLowerCase()}s WHERE user_id = $2
+       )
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [user.role.toUpperCase(), user.id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      is_verified: verificationStatus.is_verified,
+      can_place_orders: verificationStatus.is_verified,
+      verification_date: verificationStatus.verification_date,
+      latest_log: logQuery.rows.length > 0 ? logQuery.rows[0] : null,
+      message: verificationStatus.is_verified 
+        ? 'Your account is verified and you can place orders' 
+        : 'Your account is pending verification. You will be notified once verified.'
+    });
+
+  } catch (error) {
+    console.error('Error checking verification status:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Failed to check verification status' 
     });
   }
 });
@@ -406,11 +678,67 @@ router.get('/completion', authMiddleware, async (req: Request, res: Response): P
 
     let roleCompletion = 0;
     if (roleDetails) {
-      const totalRoleFields = Object.keys(roleDetails).length - 1; // Exclude user_id
-      const filledRoleFields = Object.entries(roleDetails)
-        .filter(([key, value]) => key !== 'user_id' && value)
-        .length;
-      roleCompletion = (filledRoleFields / totalRoleFields) * 50;
+      // Calculate differently based on role to account for verification fields
+      if (user.role.toUpperCase() === 'NGO') {
+        // For NGOs, include verification documents in completion calculation
+        const requiredFields = [
+          'ngo_name', 'mission_statement', 'contact_person', 'contact_number', 
+          'operating_hours', 'target_demographics'
+        ];
+        
+        const verificationFields = [
+          'ngo_type', 'registration_number', 'registration_certificate', 
+          'pan_number', 'pan_card_image'
+        ];
+        
+        const optionalFields = [
+          'fcra_number', 'fcra_certificate', 'tax_exemption_certificate', 
+          'annual_reports_link'
+        ];
+        
+        const requiredFilled = requiredFields.filter(f => roleDetails[f]).length;
+        const verificationFilled = verificationFields.filter(f => roleDetails[f]).length;
+        const optionalFilled = optionalFields.filter(f => roleDetails[f]).length;
+        
+        // Calculate weighted completion
+        const requiredWeight = 25; // 25% for required fields
+        const verificationWeight = 20; // 20% for verification fields
+        const optionalWeight = 5; // 5% for optional fields
+        
+        roleCompletion = 
+          (requiredFilled / requiredFields.length) * requiredWeight +
+          (verificationFilled / verificationFields.length) * verificationWeight +
+          (optionalFilled / optionalFields.length) * optionalWeight;
+      } 
+      else if (user.role.toUpperCase() === 'RECIPIENT') {
+        // For recipients, include verification documents in completion calculation
+        const requiredFields = [
+          'recipient_name', 'recipient_details', 'contact_person', 'contact_number'
+        ];
+        
+        const verificationFields = [
+          'id_type', 'id_number', 'id_image', 'address', 'proof_of_need'
+        ];
+        
+        const requiredFilled = requiredFields.filter(f => roleDetails[f]).length;
+        const verificationFilled = verificationFields.filter(f => roleDetails[f]).length;
+        
+        // Calculate weighted completion
+        const requiredWeight = 25; // 25% for required fields
+        const verificationWeight = 25; // 25% for verification fields
+        
+        roleCompletion = 
+          (requiredFilled / requiredFields.length) * requiredWeight +
+          (verificationFilled / verificationFields.length) * verificationWeight;
+      }
+      else {
+        // For donors, use the original calculation
+        const totalRoleFields = Object.keys(roleDetails).length - 1; // Exclude user_id
+        const filledRoleFields = Object.entries(roleDetails)
+          .filter(([key, value]) => key !== 'user_id' && value)
+          .length;
+        roleCompletion = (filledRoleFields / totalRoleFields) * 50;
+      }
     }
 
     return res.status(200).json({

@@ -14,18 +14,30 @@ const util_1 = require("../util");
 function createNGOTable() {
     return __awaiter(this, void 0, void 0, function* () {
         const createNGOTableQuery = `
-        CREATE TABLE IF NOT EXISTS ngos (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id),
-            ngo_name VARCHAR(255),
-            mission_statement TEXT,
-            contact_person VARCHAR(255),
-            contact_number VARCHAR(50),
-            operating_hours VARCHAR(255),
-            target_demographics TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
+  CREATE TABLE IF NOT EXISTS ngos (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    ngo_name VARCHAR(255),
+    mission_statement TEXT,
+    contact_person VARCHAR(255),
+    contact_number VARCHAR(50),
+    operating_hours VARCHAR(255),
+    target_demographics TEXT,
+    ngo_type VARCHAR(50),
+    registration_number VARCHAR(100),
+    registration_certificate VARCHAR(255),
+    pan_number VARCHAR(20),
+    pan_card_image VARCHAR(255),
+    fcra_number VARCHAR(100),
+    fcra_certificate VARCHAR(255),
+    tax_exemption_certificate VARCHAR(255),
+    annual_reports_link VARCHAR(255),
+    is_verified BOOLEAN DEFAULT FALSE,
+    verification_date TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
     `;
         try {
             yield (0, util_1.query)(createNGOTableQuery);

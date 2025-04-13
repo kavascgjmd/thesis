@@ -26,7 +26,6 @@ router.post('/signup', rateLimiterMiddleware_1.default, (req, res) => __awaiter(
     try {
         const validationResult = validationSchema_1.userSchema.safeParse(req.body);
         if (!validationResult.success) {
-            console.log(req.body);
             return res.status(400).json({
                 status: 'error',
                 message: 'Invalid input data',
@@ -82,11 +81,25 @@ router.post('/verify-otp', rateLimiterMiddleware_1.default, otp_1.default, (req,
                 message: 'Registration session expired. Please start over.'
             });
         }
-        yield userService_1.default.insertUser(tempUser);
+        const userId = yield userService_1.default.insertUser(tempUser);
         yield userService_1.default.deleteTempUser(phone);
         yield redisClient_1.default.del(`otp:${phone}`);
+        // Generate token now that user is created
+        const token = jsonwebtoken_1.default.sign({ id: userId, role: tempUser.role }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        // Set the token in a cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        });
         return res.status(201).json({
-            message: 'Registration successful. You can now sign in.'
+            message: 'Registration successful. You are now signed in.',
+            user: {
+                username: tempUser.username,
+                email: tempUser.email,
+                role: tempUser.role
+            }
         });
     }
     catch (error) {
@@ -115,7 +128,8 @@ router.post('/signin', rateLimiterMiddleware_1.default, (req, res) => __awaiter(
             user: {
                 username: user.username,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                profile_picture_url: user.profile_picture_url
             }
         });
     }
@@ -153,7 +167,8 @@ router.get('/verify', (req, res) => __awaiter(void 0, void 0, void 0, function* 
             user: {
                 username: user.username,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                profile_picture_url: user.profile_picture_url
             }
         });
     }

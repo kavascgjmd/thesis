@@ -12,5 +12,8 @@ exports.userSchema = zod_1.z.object({
         .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one special character'),
     email: zod_1.z.string().email('Invalid email address'),
     phone: zod_1.z.string().min(10, 'Phone number must be at least 10 digits'),
-    role: zod_1.z.enum(['Admin', 'Donor', 'NGO', 'Recipient'])
+    role: zod_1.z.enum(['Admin', 'Donor', 'NGO', 'Recipient']),
+    // Add these missing fields
+    address: zod_1.z.string().optional(),
+    profile_picture: zod_1.z.string().optional() // For base64 encoded image
 });

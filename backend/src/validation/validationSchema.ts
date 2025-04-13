@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 
 export const userSchema = z.object({
@@ -11,5 +10,8 @@ export const userSchema = z.object({
         .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one special character'),
     email: z.string().email('Invalid email address'),
     phone: z.string().min(10, 'Phone number must be at least 10 digits'),
-    role: z.enum(['Admin', 'Donor', 'NGO', 'Recipient'])
+    role: z.enum(['Admin', 'Donor', 'NGO', 'Recipient']),
+    // Add these missing fields
+    address: z.string().optional(),
+    profile_picture: z.string().optional() // For base64 encoded image
 });

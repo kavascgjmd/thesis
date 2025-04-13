@@ -16,7 +16,9 @@ import { createDriverLocationsTable } from './driver_locations';
 import { createDeliveryRoutesTable } from './delivery_routes';
 import { createRoutePointsTable } from './route_points';
 import { createDriversTable } from './drivers';
+import { createVerficationLogsTable } from './verification_logs';
 export async function createAllTables() {
+    await createVerficationLogsTable();
     await createDriverLocationsTable();
     await createDeliveryRoutesTable();
     await createRoutePointsTable();
