@@ -180,35 +180,79 @@ class S3Service {
         });
     }
     /**
-     * Upload a document to S3
-     * @param folder Folder to store the document in
-     * @param id Entity ID (user, ngo, etc.)
-     * @param documentType Type of document
-     * @param base64Document Base64 encoded document
-     * @param fileType Original file type
-     * @returns Document URL
-     */
+   * Upload a document to S3
+   * @param folder Folder to store the document in
+   * @param id Entity ID (user, ngo, etc.)
+   * @param documentType Type of document
+   * @param base64Document Base64 encoded document
+   * @param fileType Original file type
+   * @returns Object with document URL and storage type
+   */
     uploadDocument(folder, id, documentType, base64Document, fileType) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const base64Data = base64Document.replace(/^data:.*?;base64,/, '');
                 const buffer = Buffer.from(base64Data, 'base64');
                 const fileExtension = this.getFileExtension(fileType);
-                const key = `${folder}/${id}/${documentType}${fileExtension}`;
-                const params = {
-                    Bucket: BUCKET_NAME,
-                    Key: key,
-                    Body: buffer,
-                    ContentType: fileType,
-                    ACL: 'private' // Documents should be private by default
-                };
-                const uploadResult = yield s3.upload(params).promise();
-                return uploadResult.Location;
+                // Process the document if it's an image
+                let documentBuffer = buffer;
+                if (fileType.startsWith('image/')) {
+                    documentBuffer = yield this.processImage(buffer);
+                }
+                // Check if document size exceeds the max allowed for S3
+                if (documentBuffer.length > MAX_SIZE_BYTES) {
+                    // Store locally if too large
+                    return this.storeDocumentLocally(folder, id, documentType, documentBuffer, fileExtension);
+                }
+                else {
+                    // Store in S3
+                    const key = `${folder}/${id}/${documentType}${fileExtension}`;
+                    const params = {
+                        Bucket: BUCKET_NAME,
+                        Key: key,
+                        Body: documentBuffer,
+                        ContentType: fileType,
+                        ACL: 'private' // Documents should be private by default
+                    };
+                    const uploadResult = yield s3.upload(params).promise();
+                    return {
+                        url: uploadResult.Location,
+                        storageType: 's3'
+                    };
+                }
             }
             catch (error) {
                 console.error(`Error uploading ${folder} document:`, error);
                 throw new Error(`Failed to upload ${folder} document`);
             }
+        });
+    }
+    /**
+     * Store a document locally when too large for S3
+     * @param folder Folder to store the document in
+     * @param id Entity ID
+     * @param documentType Type of document
+     * @param documentBuffer Document buffer
+     * @param fileExtension File extension
+     * @returns Object with document URL and storage type
+     */
+    storeDocumentLocally(folder, id, documentType, documentBuffer, fileExtension) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const dirPath = path_1.default.join(__dirname, '..', '..', 'public', 'uploads', folder, id);
+            const fileName = `${documentType}${fileExtension}`;
+            const filePath = path_1.default.join(dirPath, fileName);
+            // Create directory if it doesn't exist
+            if (!fs_1.default.existsSync(dirPath)) {
+                fs_1.default.mkdirSync(dirPath, { recursive: true });
+            }
+            // Write the file
+            fs_1.default.writeFileSync(filePath, documentBuffer);
+            // Return the path that would be accessible from the web
+            const url = `/uploads/${folder}/${id}/${fileName}`;
+            return {
+                url,
+                storageType: 'local'
+            };
         });
     }
 }

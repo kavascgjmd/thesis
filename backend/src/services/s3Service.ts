@@ -175,38 +175,97 @@ class S3Service {
   }
 
   /**
-   * Upload a document to S3
-   * @param folder Folder to store the document in
-   * @param id Entity ID (user, ngo, etc.)
-   * @param documentType Type of document
-   * @param base64Document Base64 encoded document
-   * @param fileType Original file type
-   * @returns Document URL
-   */
-  async uploadDocument(folder: string, id: string, documentType: string, base64Document: string, fileType: string): Promise<string> {
-    try {
-      const base64Data = base64Document.replace(/^data:.*?;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      const fileExtension = this.getFileExtension(fileType);
-      
+ * Upload a document to S3
+ * @param folder Folder to store the document in
+ * @param id Entity ID (user, ngo, etc.)
+ * @param documentType Type of document
+ * @param base64Document Base64 encoded document
+ * @param fileType Original file type
+ * @returns Object with document URL and storage type
+ */
+async uploadDocument(
+  folder: string, 
+  id: string, 
+  documentType: string, 
+  base64Document: string, 
+  fileType: string
+): Promise<{ url: string, storageType: 's3' | 'local' }> {
+  try {
+    const base64Data = base64Document.replace(/^data:.*?;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const fileExtension = this.getFileExtension(fileType);
+    
+    // Process the document if it's an image
+    let documentBuffer = buffer;
+    if (fileType.startsWith('image/')) {
+      documentBuffer = await this.processImage(buffer);
+    }
+    
+    // Check if document size exceeds the max allowed for S3
+    if (documentBuffer.length > MAX_SIZE_BYTES) {
+      // Store locally if too large
+      return this.storeDocumentLocally(folder, id, documentType, documentBuffer, fileExtension);
+    } else {
+      // Store in S3
       const key = `${folder}/${id}/${documentType}${fileExtension}`;
       
       const params = {
         Bucket: BUCKET_NAME,
         Key: key,
-        Body: buffer,
+        Body: documentBuffer,
         ContentType: fileType,
         ACL: 'private' // Documents should be private by default
       };
       
       const uploadResult = await s3.upload(params).promise();
       
-      return uploadResult.Location;
-    } catch (error) {
-      console.error(`Error uploading ${folder} document:`, error);
-      throw new Error(`Failed to upload ${folder} document`);
+      return {
+        url: uploadResult.Location,
+        storageType: 's3'
+      };
     }
+  } catch (error) {
+    console.error(`Error uploading ${folder} document:`, error);
+    throw new Error(`Failed to upload ${folder} document`);
   }
+}
+
+/**
+ * Store a document locally when too large for S3
+ * @param folder Folder to store the document in
+ * @param id Entity ID
+ * @param documentType Type of document
+ * @param documentBuffer Document buffer
+ * @param fileExtension File extension
+ * @returns Object with document URL and storage type
+ */
+private async storeDocumentLocally(
+  folder: string,
+  id: string,
+  documentType: string,
+  documentBuffer: Buffer,
+  fileExtension: string
+): Promise<{ url: string, storageType: 'local' }> {
+  const dirPath = path.join(__dirname, '..', '..', 'public', 'uploads', folder, id);
+  const fileName = `${documentType}${fileExtension}`;
+  const filePath = path.join(dirPath, fileName);
+  
+  // Create directory if it doesn't exist
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+  
+  // Write the file
+  fs.writeFileSync(filePath, documentBuffer);
+  
+  // Return the path that would be accessible from the web
+  const url = `/uploads/${folder}/${id}/${fileName}`;
+  
+  return {
+    url,
+    storageType: 'local'
+  };
+}
 }
 
 export default new S3Service();

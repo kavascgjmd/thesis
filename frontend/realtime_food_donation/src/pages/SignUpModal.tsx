@@ -1,6 +1,6 @@
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Check, AlertCircle, Search, Upload, FileImage } from 'lucide-react';
+import { X, Check, AlertCircle, Search, Upload, FileImage, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 const BASE_URL = 'http://localhost:3000';
 type UserRole = 'Admin' | 'Donor' | 'NGO' | 'Recipient';
@@ -45,6 +45,7 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
   const [formData, setFormData] = useState<FormData>({
     username: '',
@@ -105,6 +106,11 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
 
     fetchCountries();
   }, []);
+
+  // Toggle password visibility
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
 
   // Fallback country list in case API is unavailable
   const fallbackCountries: Country[] = [
@@ -405,9 +411,9 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
                 />
               </div>
 
-              <div>
+              <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   name="password"
                   placeholder="Password"
                   value={formData.password}
@@ -416,6 +422,14 @@ export const SignUpModal: React.FC<SignUpModalProps> = ({ onClose, setIsAuthenti
                   required
                   disabled={isLoading}
                 />
+                <button 
+                  type="button"
+                  onClick={togglePasswordVisibility}
+                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={isLoading}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
                 <div className="mt-2 space-y-1">
                   {passwordRequirements.map((req) => (
                     <div key={req.key} className="flex items-center text-xs">

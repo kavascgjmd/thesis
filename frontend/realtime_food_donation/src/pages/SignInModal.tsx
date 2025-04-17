@@ -1,7 +1,6 @@
-
 import React, { useState, ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 const BASE_URL =  'http://localhost:3000';
 interface SignInFormData {
@@ -21,6 +20,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
   const navigate = useNavigate();
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [formData, setFormData] = useState<SignInFormData>({
     username: '',
     password: '',
@@ -28,6 +28,10 @@ export const SignInModal: React.FC<SignInModalProps> = ({
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -43,7 +47,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
         withCredentials: true
       });
       if (response.data.message === 'Login successful') {
-        setIsAuthenticated(true);2
+        setIsAuthenticated(true);
         onClose();
         navigate('/profile', { replace: true });
       }
@@ -98,9 +102,9 @@ export const SignInModal: React.FC<SignInModalProps> = ({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 name="password"
                 placeholder="Password"
                 value={formData.password}
@@ -108,6 +112,13 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                 className="w-full p-3 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all placeholder:text-gray-400"
                 required
               />
+              <button 
+                type="button"
+                onClick={togglePasswordVisibility}
+                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
             </div>
 
             <button

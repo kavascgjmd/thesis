@@ -14,7 +14,7 @@ const util_1 = require("../util");
 function createUserTable() {
     return __awaiter(this, void 0, void 0, function* () {
         const createUserTableQuery = `
-       CREATE TABLE IF NOT EXISTS users (
+    CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,

@@ -6,6 +6,9 @@ import { UserPayload } from '../types/custom';
 import otpService from '../services/optService'
 import redisClient from '../redisClient';
 import nodemailer from 'nodemailer';
+import s3Service from '../services/s3Service';
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 const router = Router();
 
 // Configure email transporter
@@ -45,7 +48,7 @@ const basicProfileSchema = z.object({
   email: z.string().email().max(255),
   phone: z.string().max(50).optional(),
   address: z.string().optional(),
-  profile_picture: z.string().optional()
+  profile_picture: z.string().optional().nullable(),
 });
 
 const donorDetailsSchema = z.object({
@@ -66,15 +69,15 @@ const ngoDetailsSchema = z.object({
   operating_hours: z.string().max(255),
   target_demographics: z.string(),
   // New fields from the updated schema
-  ngo_type: z.string().max(50).optional(),
-  registration_number: z.string().max(100).optional(),
-  registration_certificate: z.string().max(255).optional(),
-  pan_number: z.string().max(20).optional(),
-  pan_card_image: z.string().max(255).optional(),
-  fcra_number: z.string().max(100).optional(),
-  fcra_certificate: z.string().max(255).optional(),
-  tax_exemption_certificate: z.string().max(255).optional(),
-  annual_reports_link: z.string().max(255).optional()
+  ngo_type: z.string().max(50).optional().nullable(),
+  registration_number: z.string().max(100).optional().nullable(),
+  registration_certificate: z.string().max(255).optional().nullable(),
+  pan_number: z.string().max(20).optional().nullable(),
+  pan_card_image: z.string().max(255).optional().nullable(),
+  fcra_number: z.string().max(100).optional().nullable(),
+  fcra_certificate: z.string().max(255).optional().nullable(),
+  tax_exemption_certificate: z.string().max(255).optional().nullable(),
+  annual_reports_link: z.string().max(255).optional().nullable()
 });
 
 // Updated recipient schema with new verification fields
@@ -84,11 +87,11 @@ const recipientDetailsSchema = z.object({
   contact_person: z.string().max(255),
   contact_number: z.string().max(50),
   // New fields from the updated schema
-  id_type: z.string().max(50).optional(),
-  id_number: z.string().max(100).optional(),
-  id_image: z.string().max(255).optional(),
-  address: z.string().optional(),
-  proof_of_need: z.string().optional()
+  id_type: z.string().max(50).optional().nullable(),
+  id_number: z.string().max(100).optional().nullable(),
+  id_image: z.string().max(255).optional().nullable(),
+  address: z.string().optional().nullable(),
+  proof_of_need: z.string().optional().nullable()
 });
 
 // Define types for validation results
@@ -155,7 +158,6 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<any
   }
 });
 
-// Update basic profile information
 router.put('/basic', authMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
     const user = req.user as UserPayload;
@@ -179,7 +181,7 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
 
     // Get current user data
     const currentUser = await query(
-      'SELECT username, email FROM users WHERE id = $1',
+      'SELECT username, email, role FROM users WHERE id = $1',
       [user.id]
     );
 
@@ -218,6 +220,42 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
       [username, email, phone, address, profile_picture, user.id]
     );
 
+    // Create entry in role-specific table if it doesn't exist yet
+    // This ensures the user has a record to update when filling role details
+    const role = currentUser.rows[0].role.toUpperCase();
+    
+    if (role === 'DONOR') {
+      const existingDonor = await query('SELECT * FROM donors WHERE user_id = $1', [user.id]);
+      if (existingDonor.rows.length === 0) {
+        // Create initial donor record
+        await query(
+          `INSERT INTO donors (user_id, created_at, updated_at) 
+           VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [user.id]
+        );
+      }
+    } else if (role === 'NGO') {
+      const existingNGO = await query('SELECT * FROM ngos WHERE user_id = $1', [user.id]);
+      if (existingNGO.rows.length === 0) {
+        // Create initial NGO record
+        await query(
+          `INSERT INTO ngos (user_id, created_at, updated_at) 
+           VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [user.id]
+        );
+      }
+    } else if (role === 'RECIPIENT') {
+      const existingRecipient = await query('SELECT * FROM recipients WHERE user_id = $1', [user.id]);
+      if (existingRecipient.rows.length === 0) {
+        // Create initial recipient record
+        await query(
+          `INSERT INTO recipients (user_id, created_at, updated_at) 
+           VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [user.id]
+        );
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
@@ -242,6 +280,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
         message: 'Authentication required' 
       });
     }
+  
 
     // Define type union for validation results
     type ValidationResult = 
@@ -300,7 +339,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           'SELECT * FROM ngos WHERE user_id = $1',
           [user.id]
         );
-
+         
         validationResult = ngoDetailsSchema.safeParse(req.body) as ValidationResult;
         if (validationResult.success) {
           const ngoData = validationResult.data as NGODetailsData;
@@ -310,6 +349,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
             registration_certificate, pan_number, pan_card_image, fcra_number,
             fcra_certificate, tax_exemption_certificate, annual_reports_link
           } = ngoData;
+      
 
           // Check if this is a new entry or substantial update that requires verification
           if (!existingRecord.rows.length) {
@@ -452,7 +492,8 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           message: 'Invalid user role'
         });
     }
-
+    
+    
     if (!validationResult || !validationResult.success) {
       return res.status(400).json({
         success: false,
@@ -460,7 +501,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
         errors: validationResult ? validationResult.error.errors : 'Validation failed'
       });
     }
-
+   
     // If verification is needed, send an email to admin
     if (verificationNeeded && (user.role.toUpperCase() === 'NGO' || user.role.toUpperCase() === 'RECIPIENT')) {
       // Get admin emails
@@ -559,6 +600,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
   }
 });
 
+
 router.get('/verification-status', authMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
     const user = req.user as UserPayload;
@@ -573,36 +615,37 @@ router.get('/verification-status', authMiddleware, async (req: Request, res: Res
     if (user.role.toUpperCase() === 'DONOR') {
       return res.status(200).json({
         success: true,
-        is_verified: true,
-        can_place_orders: true,
-        message: 'Donor accounts are pre-verified'
+        status: {
+          is_verified: true,
+          can_place_orders: true,
+          verification_date: null,
+          message: 'Donor accounts are pre-verified and can place orders immediately.'
+        }
       });
     }
 
-    let verificationQuery;
-    if (user.role.toUpperCase() === 'NGO') {
-      verificationQuery = await query(
-        'SELECT is_verified, verification_date FROM ngos WHERE user_id = $1',
-        [user.id]
-      );
-    } else if (user.role.toUpperCase() === 'RECIPIENT') {
-      verificationQuery = await query(
-        'SELECT is_verified, verification_date FROM recipients WHERE user_id = $1',
-        [user.id]
-      );
-    } else {
+    if (user.role.toUpperCase() !== 'NGO' && user.role.toUpperCase() !== 'RECIPIENT') {
       return res.status(400).json({
         success: false,
-        message: 'Invalid user role'
+        message: 'Invalid user role or role does not require verification'
       });
     }
+
+    const table = user.role.toLowerCase() + 's';
+    const verificationQuery = await query(
+      `SELECT is_verified, can_place_orders, verification_date FROM ${table} WHERE user_id = $1`,
+      [user.id]
+    );
 
     if (!verificationQuery.rows.length) {
       return res.status(200).json({
         success: true,
-        is_verified: false,
-        can_place_orders: false,
-        message: 'Account details not found or incomplete. Please complete your profile.'
+        status: {
+          is_verified: false,
+          can_place_orders: false,
+          verification_date: null,
+          message: 'Account details not found or incomplete. Please complete your profile.'
+        }
       });
     }
 
@@ -612,22 +655,34 @@ router.get('/verification-status', authMiddleware, async (req: Request, res: Res
     const logQuery = await query(
       `SELECT * FROM verification_logs 
        WHERE entity_type = $1 AND entity_id = (
-         SELECT id FROM ${user.role.toLowerCase()}s WHERE user_id = $2
+         SELECT id FROM ${table} WHERE user_id = $2
        )
        ORDER BY created_at DESC
        LIMIT 1`,
       [user.role.toUpperCase(), user.id]
     );
 
+    let message = '';
+    if (verificationStatus.is_verified) {
+      message = 'Your account has been verified.';
+      if (verificationStatus.can_place_orders) {
+        message += ' You can now place orders.';
+      } else {
+        message += ' You will be able to place orders soon.';
+      }
+    } else {
+      message = 'Your account is pending verification. This usually takes 1-2 business days.';
+    }
+
     return res.status(200).json({
       success: true,
-      is_verified: verificationStatus.is_verified,
-      can_place_orders: verificationStatus.is_verified,
-      verification_date: verificationStatus.verification_date,
-      latest_log: logQuery.rows.length > 0 ? logQuery.rows[0] : null,
-      message: verificationStatus.is_verified 
-        ? 'Your account is verified and you can place orders' 
-        : 'Your account is pending verification. You will be notified once verified.'
+      status: {
+        is_verified: verificationStatus.is_verified,
+        can_place_orders: verificationStatus.can_place_orders,
+        verification_date: verificationStatus.verification_date,
+        message,
+        latest_log: logQuery.rows.length > 0 ? logQuery.rows[0] : null
+      }
     });
 
   } catch (error) {
@@ -638,6 +693,9 @@ router.get('/verification-status', authMiddleware, async (req: Request, res: Res
     });
   }
 });
+
+
+
 
 
 // Calculate profile completion percentage
@@ -754,6 +812,607 @@ router.get('/completion', authMiddleware, async (req: Request, res: Response): P
     });
   }
 });
+
+router.post('/upload-profile-picture', authMiddleware, async (req: Request, res: Response): Promise<any> => {
+  try {
+    const user = req.user as UserPayload;
+    if (!user?.id) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'Authentication required' 
+      });
+    }
+
+    const { image, fileType } = req.body;
+    
+    if (!image || !fileType) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing image data or file type'
+      });
+    }
+
+    // Use S3Service to upload the image
+    const uploadResult = await s3Service.uploadProfilePicture(
+      user.id.toString(), 
+      image, 
+      fileType
+    );
+
+    // Update the user's profile_picture in the database
+    await query(
+      'UPDATE users SET profile_picture = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [uploadResult.url, user.id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile picture uploaded successfully',
+      imageUrl: uploadResult.url,
+      storageType: uploadResult.storageType
+    });
+
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Failed to upload profile picture',
+    });
+  }
+});
+
+router.post('/upload-document', authMiddleware, async (req: Request, res: Response): Promise<any> => {
+  try {
+    const user = req.user as UserPayload;
+    const { document, fileType, documentType } = req.body;
+
+    if (!user?.id || !user?.role) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required' 
+      });
+    }
+
+    // Validate request
+    if (!document || !fileType || !documentType) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Document, fileType and documentType are required' 
+      });
+    }
+
+    // Check if the user's role requires verification
+    if (user.role.toUpperCase() !== 'NGO' && user.role.toUpperCase() !== 'RECIPIENT') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only NGO and RECIPIENT roles can upload verification documents'
+      });
+    }
+
+    // Upload to S3
+    const folder = user.role.toLowerCase() + 's';
+    const uploadResult = await s3Service.uploadDocument(
+      folder, 
+      user.id.toString(), 
+      documentType, 
+      document, 
+      fileType
+    );
+
+    // Update the document URL in the database
+    let updateField = '';
+    if (user.role.toUpperCase() === 'NGO') {
+      if (documentType === 'registration_certificate') updateField = 'registration_certificate';
+      else if (documentType === 'pan_card_image') updateField = 'pan_card_image';
+      else if (documentType === 'fcra_certificate') updateField = 'fcra_certificate';
+      else if (documentType === 'tax_exemption_certificate') updateField = 'tax_exemption_certificate';
+    } else if (user.role.toUpperCase() === 'RECIPIENT') {
+      if (documentType === 'id_image') updateField = 'id_image';
+      else if (documentType === 'proof_of_need') updateField = 'proof_of_need';
+    }
+
+    if (!updateField) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document type for this role'
+      });
+    }
+
+    // Update the role-specific table with the document URL
+    const table = user.role.toLowerCase() + 's';
+    const updateQuery = `UPDATE ${table} SET ${updateField} = $1, is_verified = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING *`;
+    const updateResult = await query(updateQuery, [uploadResult.url, user.id]);
+
+    if (!updateResult.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: `${user.role} record not found. Please complete your profile first.`
+      });
+    }
+
+    // Get user information for email notification
+    const userQuery = await query(
+      'SELECT username, email FROM users WHERE id = $1',
+      [user.id]
+    );
+    
+    if (!userQuery.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const username = userQuery.rows[0].username;
+    const userEmail = userQuery.rows[0].email;
+
+    // Create verification log entry
+    const logResult = await query(
+      `INSERT INTO verification_logs (
+        entity_type, entity_id, status, verification_notes, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id`,
+      [
+        user.role.toUpperCase(),
+        updateResult.rows[0].id,
+        'PENDING',
+        `Document uploaded: ${documentType} for verification`
+      ]
+    );
+
+    // Get admin emails
+    const adminQuery = await query(
+      'SELECT email FROM users WHERE role = $1',
+      ['ADMIN']
+    );
+    
+    let adminEmail = process.env.ADMIN_EMAIL || '20je0209@cve.iitism.ac.in';
+    
+    if (adminQuery.rows.length > 0) {
+      adminEmail = adminQuery.rows.map(row => row.email).join(',');
+    }
+    
+    // Generate verification tokens for approve/reject actions
+    const approveToken = await generateVerificationToken(
+      user.role.toUpperCase(), 
+      updateResult.rows[0].id,
+      user.id
+    );
+    
+    // API base URL
+    const apiUrl = process.env.API_URL || 'http://localhost:3000/api';
+    
+    // Direct links for document viewing
+    const documentViewUrl = uploadResult.url;
+    
+    // Verification action URLs
+    const approveUrl = `${apiUrl}/profile/verify-document?token=${approveToken}&action=approve&logId=${logResult.rows[0].id}`;
+    const rejectUrl = `${apiUrl}/profile/verify-document?token=${approveToken}&action=reject&logId=${logResult.rows[0].id}`;
+    
+    // Send notification email to admin with viewing and action links
+    const adminSubject = `Food Donation App - New ${user.role} Document Upload Requires Verification`;
+    const adminText = `
+      Hello Admin,
+      
+      A user has uploaded a new document that requires verification.
+      
+      User: ${username}
+      Email: ${userEmail}
+      Role: ${user.role}
+      Document Type: ${documentType}
+      
+      View Document: ${documentViewUrl}
+      
+      To approve this document, click here: ${approveUrl}
+      To reject this document, click here: ${rejectUrl}
+      
+      Regards,
+      Food Donation App Team
+    `;
+    const adminHtml = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #e53e3e; border-bottom: 1px solid #e53e3e; padding-bottom: 10px;">New Document Upload Requires Verification</h2>
+        <p>Hello Admin,</p>
+        <p>A user has uploaded a new document that requires verification.</p>
+        <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+          <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">User:</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${username}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Email:</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${userEmail}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Role:</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${user.role}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Document Type:</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${documentType}</td>
+          </tr>
+        </table>
+        
+        <div style="margin: 20px 0;">
+          <p><strong>Document:</strong></p>
+          <p><a href="${documentViewUrl}" target="_blank" style="color: #3182ce;">View Document</a></p>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin: 30px 0;">
+          <a href="${approveUrl}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; text-align: center; min-width: 120px;">Approve</a>
+          <a href="${rejectUrl}" style="display: inline-block; background-color: #f44336; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; text-align: center; min-width: 120px;">Reject</a>
+        </div>
+        
+        <p>Regards,<br>Food Donation App Team</p>
+      </div>
+    `;
+    
+    await sendEmail(adminEmail, adminSubject, adminText, adminHtml);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Document uploaded successfully and admin notified for verification via email',
+      documentUrl: uploadResult.url,
+      storageType: uploadResult.storageType || 's3'
+    });
+
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Failed to upload document: ' + (error instanceof Error ? error.message : 'Unknown error') 
+    });
+  }
+});
+
+router.get('/verify-document', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { token, action, logId } = req.query;
+    
+    if (!token || !action || !logId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameters'
+      });
+    }
+    
+    if (action !== 'approve' && action !== 'reject') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid action'
+      });
+    }
+    
+    // Verify token
+    const payload = jwt.verify(
+      token as string, 
+      process.env.JWT_SECRET || 'your-secret-key'
+    ) as { entityType: string; entityId: number; userId: number; purpose: string };
+    
+    if (payload.purpose !== 'verification') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid verification token'
+      });
+    }
+    
+    // Get entity details
+    const entityType = payload.entityType; // 'NGO' or 'RECIPIENT'
+    const entityId = payload.entityId;
+    const userId = payload.userId;
+    
+    // Check if log exists
+    const logQuery = await query(
+      'SELECT * FROM verification_logs WHERE id = $1',
+      [logId]
+    );
+    
+    if (!logQuery.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Verification record not found'
+      });
+    }
+    
+    // Update entity verification status
+    const table = entityType.toLowerCase() + 's';
+    const isApproved = action === 'approve';
+    
+    const updateResult = await query(
+      `UPDATE ${table} 
+       SET is_verified = $1, can_place_orders = $1, verification_date = NOW() 
+       WHERE id = $2 RETURNING *`,
+      [isApproved, entityId]
+    );
+    
+    if (!updateResult.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Entity not found'
+      });
+    }
+    
+    // Update log status
+    await query(
+      `UPDATE verification_logs 
+       SET status = $1, verification_notes = $2, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $3`,
+      [
+        isApproved ? 'APPROVED' : 'REJECTED', 
+        isApproved ? 'Approved via email verification' : 'Rejected via email verification',
+        logId
+      ]
+    );
+    
+    // Get user information
+    const userQuery = await query(
+      'SELECT username, email FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (!userQuery.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const username = userQuery.rows[0].username;
+    const userEmail = userQuery.rows[0].email;
+    
+    // Send notification email to the user about their verification status
+    const appName = 'Food Donation App';
+    const emailSubject = isApproved ? 
+      `${appName} - Your Account Has Been Verified` : 
+      `${appName} - Account Verification Update`;
+    
+    const emailText = isApproved ? 
+      `Hello ${username},\n\nGreat news! Your account has been verified. You can now place orders and fully use the ${appName}.\n\nThank you for your patience during the verification process.\n\nRegards,\n${appName} Team` : 
+      `Hello ${username},\n\nWe've reviewed your account verification documents. Unfortunately, we couldn't approve your verification at this time.\n\nPlease update your information and try again.\n\nIf you have any questions, please contact our support team.\n\nRegards,\n${appName} Team`;
+    
+    const emailHtml = isApproved ? 
+      `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4CAF50; border-bottom: 1px solid #4CAF50; padding-bottom: 10px;">Your Account Has Been Verified!</h2>
+        <p>Hello ${username},</p>
+        <p>Great news! Your account has been verified. You can now place orders and fully use the ${appName}.</p>
+        <p>Thank you for your patience during the verification process.</p>
+        <p>Regards,<br>${appName} Team</p>
+      </div>` : 
+      `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #f44336; border-bottom: 1px solid #f44336; padding-bottom: 10px;">Account Verification Update</h2>
+        <p>Hello ${username},</p>
+        <p>We've reviewed your account verification documents. Unfortunately, we couldn't approve your verification at this time.</p>
+        <p>Please update your information and try again.</p>
+        <p>If you have any questions, please contact our support team.</p>
+        <p>Regards,<br>${appName} Team</p>
+      </div>`;
+    
+    await sendEmail(userEmail, emailSubject, emailText, emailHtml);
+    
+    // Return a success page
+    const htmlResponse = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Verification ${isApproved ? 'Approved' : 'Rejected'}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            text-align: center;
+          }
+          .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          }
+          h1 {
+            color: ${isApproved ? '#4CAF50' : '#f44336'};
+          }
+          .message {
+            font-size: 18px;
+            margin: 20px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Verification ${isApproved ? 'Approved' : 'Rejected'}</h1>
+          <div class="message">
+            You have successfully ${isApproved ? 'approved' : 'rejected'} the verification request.
+          </div>
+          <p>The user has been notified via email about this decision.</p>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    res.setHeader('Content-Type', 'text/html');
+    return res.send(htmlResponse);
+    
+  } catch (error) {
+    console.error('Error in document verification:', error);
+    
+    // Return an error page
+    const htmlResponse = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Verification Error</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            text-align: center;
+          }
+          .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          }
+          h1 {
+            color: #f44336;
+          }
+          .message {
+            font-size: 18px;
+            margin: 20px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Verification Error</h1>
+          <div class="message">
+            There was an error processing this verification request.
+          </div>
+          <p>The verification link may be invalid or expired.</p>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    res.setHeader('Content-Type', 'text/html');
+    return res.status(400).send(htmlResponse);
+  }
+});
+
+router.post('/admin-verify', authMiddleware, async (req: Request, res: Response): Promise<any> => {
+  try {
+    const user = req.user as UserPayload;
+    const { userId, approved, notes } = req.body;
+    
+    // Check if user is an admin
+    if (user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can verify users'
+      });
+    }
+
+    // Validate required fields
+    if (!userId || approved === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId and approved status are required'
+      });
+    }
+
+    // Get the user to verify
+    const userToVerify = await query('SELECT * FROM users WHERE id = $1', [userId]);
+    
+    if (!userToVerify.rows[0]) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userRole = userToVerify.rows[0].role;
+    const userEmail = userToVerify.rows[0].email;
+    const username = userToVerify.rows[0].username;
+    let updateResult;
+
+    // Check if the role requires verification
+    if (userRole !== 'NGO' && userRole !== 'RECIPIENT') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only NGO and RECIPIENT roles require verification'
+      });
+    }
+
+    // Update verification status based on role
+    const table = userRole.toLowerCase() + 's';
+    updateResult = await query(
+      `UPDATE ${table} SET is_verified = $1, can_place_orders = $1, verification_date = NOW() WHERE user_id = $2 RETURNING *`,
+      [approved, userId]
+    );
+
+    if (!updateResult.rows[0]) {
+      return res.status(404).json({
+        success: false,
+        message: 'Role details not found'
+      });
+    }
+
+    // Create verification log
+    await query(
+      `INSERT INTO verification_logs (
+        entity_type, entity_id, status, verification_notes, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [
+        userRole.toUpperCase(),
+        updateResult.rows[0].id,
+        approved ? 'APPROVED' : 'REJECTED',
+        notes || (approved ? 'Account verified by admin' : 'Account verification rejected by admin')
+      ]
+    );
+
+    // Send email notification to the user
+    const appName = 'Food Donation App';
+    const emailSubject = approved ? 
+      `${appName} - Your Account Has Been Verified` : 
+      `${appName} - Account Verification Update`;
+    
+    const emailText = approved ? 
+      `Hello ${username},\n\nGreat news! Your account has been verified. You can now place orders and fully use the ${appName}.\n\nThank you for your patience during the verification process.\n\nRegards,\n${appName} Team` : 
+      `Hello ${username},\n\nWe've reviewed your account verification documents. Unfortunately, we couldn't approve your verification at this time.\n\n${notes || 'Please update your information and try again.'}\n\nIf you have any questions, please contact our support team.\n\nRegards,\n${appName} Team`;
+    
+    const emailHtml = approved ? 
+      `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4CAF50; border-bottom: 1px solid #4CAF50; padding-bottom: 10px;">Your Account Has Been Verified!</h2>
+        <p>Hello ${username},</p>
+        <p>Great news! Your account has been verified. You can now place orders and fully use the ${appName}.</p>
+        <p>Thank you for your patience during the verification process.</p>
+        <p>Regards,<br>${appName} Team</p>
+      </div>` : 
+      `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #f44336; border-bottom: 1px solid #f44336; padding-bottom: 10px;">Account Verification Update</h2>
+        <p>Hello ${username},</p>
+        <p>We've reviewed your account verification documents. Unfortunately, we couldn't approve your verification at this time.</p>
+        <p>${notes || 'Please update your information and try again.'}</p>
+        <p>If you have any questions, please contact our support team.</p>
+        <p>Regards,<br>${appName} Team</p>
+      </div>`;
+    
+    await sendEmail(userEmail, emailSubject, emailText, emailHtml);
+
+    return res.status(200).json({
+      success: true,
+      message: `User ${userId} ${approved ? 'approved' : 'rejected'} successfully`,
+      details: updateResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error verifying user:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify user: ' + (error instanceof Error ? error.message : 'Unknown error')
+    });
+  }
+});
+
+async function generateVerificationToken(entityType: string, entityId: number, userId: number): Promise<string> {
+  // Create a JWT token that will be used for verification links in emails
+  const token = jwt.sign(
+    {
+      entityType,
+      entityId,
+      userId,
+      purpose: 'verification'
+    },
+    process.env.JWT_SECRET || 'your-secret-key',
+    { expiresIn: '7d' } // Token expires in 7 days
+  );
+  
+  return token;
+}
 
 // Shared function to handle sending verification OTP
 async function handleSendVerificationOtp(req: Request, res: Response): Promise<any> {
