@@ -161,7 +161,38 @@ class OrderService {
       throw error;
     }
   }
-
+  async updatePaymentStatus(orderId: number, paymentStatus: string): Promise<void> {
+    try {
+      // Validate the payment status
+      const validStatuses = ['pending', 'confirmed', 'paid', 'failed'];
+      if (!validStatuses.includes(paymentStatus)) {
+        throw new Error('Invalid payment status');
+      }
+      
+      // Update the payment status in the orders table
+      await query(
+        `UPDATE orders 
+         SET payment_status = $1, 
+             updated_at = NOW()
+         WHERE id = $2`,
+        [paymentStatus, orderId]
+      );
+      
+      // If payment is confirmed or paid, update order status to processing if it's still pending
+      if (paymentStatus === 'confirmed' || paymentStatus === 'paid') {
+        await query(
+          `UPDATE orders 
+           SET order_status = CASE WHEN order_status = 'pending' THEN 'processing' ELSE order_status END,
+               updated_at = NOW()
+           WHERE id = $1 AND order_status = 'pending'`,
+          [orderId]
+        );
+      }
+    } catch (error) {
+      console.error('Failed to update payment status:', error);
+      throw error;
+    }
+  }
   private async getDeliveryPoints(cartId: number, deliveryAddress: string): Promise<Array<{address: string, type: string}>> {
     const points = [];
     

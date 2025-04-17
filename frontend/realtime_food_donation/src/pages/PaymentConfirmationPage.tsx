@@ -9,21 +9,29 @@ import DriverLocationMap from './DriverLocationMap';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
+// USD to INR conversion rate
+const USD_TO_INR_RATE = 84;
+
+// Helper function to convert USD to INR
+const usdToInr = (amount: number): number => {
+  return amount * USD_TO_INR_RATE;
+};
+
 interface OrderDetails {
   id: number;
   orderStatus: string;
-  paymentStatus: string;
+  paymentStatus: string;  // We'll use this field to track payment confirmation
   deliveryFee: string;
   totalAmount: string;
   deliveryAddress: string;
   items: Array<{
     food_type: string;
-    food_category: string; // New field
+    food_category: string;
     donor_name: string;
-    quantity?: number; // Now optional
-    servings?: number; // For Cooked Meals
-    weight_kg?: number; // For Raw Ingredients
-    package_size?: string; // For Packaged Items
+    quantity?: number;
+    servings?: number;
+    weight_kg?: number;
+    package_size?: string;
     pickup_location: string;
   }>;
   route?: {
@@ -65,7 +73,7 @@ const PaymentConfirmationPage: React.FC = () => {
     fetchOrderDetails(parseInt(orderId));
   }, [orderId]);
 
-  // Refresh order details every 30 seconds for tracking
+  // Refresh order details every 30 seconds for tracking, but only if payment is confirmed
   useEffect(() => {
     if (!orderId || !paymentConfirmed) return;
     
@@ -90,6 +98,10 @@ const PaymentConfirmationPage: React.FC = () => {
       const data = await response.json();
       if (data.success) {
         setOrder(data.order);
+        // Check if payment is already confirmed from the server
+        if (data.order.paymentStatus === 'confirmed' || data.order.paymentStatus === 'paid') {
+          setPaymentConfirmed(true);
+        }
       } else {
         setError(data.message || 'Failed to fetch order details');
       }
@@ -102,15 +114,24 @@ const PaymentConfirmationPage: React.FC = () => {
   
   const handleConfirmPayment = async () => {
     try {
-      // This is just a dummy payment confirmation
-      // In a real app, you would integrate with a payment gateway
       setLoading(true);
       
-      // Simulate API call for payment confirmation
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Actually update the payment status on the server
+      const response = await fetch(`${API_BASE_URL}/orders/${orderId}/payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ paymentStatus: 'confirmed' })
+      });
       
+      if (!response.ok) {
+        throw new Error('Failed to update payment status');
+      }
+      
+      // Update local state to show payment confirmed
       setPaymentConfirmed(true);
-      setLoading(false);
       
       // Refresh order details after payment
       if (orderId) {
@@ -118,6 +139,7 @@ const PaymentConfirmationPage: React.FC = () => {
       }
     } catch (err) {
       setError('Payment processing failed');
+    } finally {
       setLoading(false);
     }
   };
@@ -127,7 +149,12 @@ const PaymentConfirmationPage: React.FC = () => {
     
     const deliveryFee = parseFloat(order.deliveryFee) || 0;
     const distanceFee = order.route ? order.route.totalDistance * 0.5 : 0; // $0.50 per km
-    const totalAmount = deliveryFee + distanceFee;
+    
+    // Convert to INR
+    const deliveryFeeInr = usdToInr(deliveryFee);
+    const distanceFeeInr = usdToInr(distanceFee);
+    const totalAmountInr = deliveryFeeInr + distanceFeeInr;
+    const ratePerKmInr = usdToInr(0.5);
     
     return (
       <Card className="p-6 mb-6">
@@ -135,20 +162,20 @@ const PaymentConfirmationPage: React.FC = () => {
         <div className="space-y-2">
           <div className="flex justify-between">
             <span>Base Delivery Fee:</span>
-            <span>${deliveryFee.toFixed(2)}</span>
+            <span>₹{deliveryFeeInr.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Distance Fee ({order.route?.totalDistance.toFixed(1) || 0} km × $0.50/km):</span>
-            <span>${distanceFee.toFixed(2)}</span>
+            <span>Distance Fee ({order.route?.totalDistance.toFixed(1) || 0} km × ₹{ratePerKmInr.toFixed(2)}/km):</span>
+            <span>₹{distanceFeeInr.toFixed(2)}</span>
           </div>
           <div className="h-px bg-gray-200 my-2"></div>
           <div className="flex justify-between font-bold">
             <span>Total Amount:</span>
-            <span>${totalAmount.toFixed(2)}</span>
+            <span>₹{totalAmountInr.toFixed(2)}</span>
           </div>
         </div>
         
-        {!paymentConfirmed && (
+        {!paymentConfirmed && order.paymentStatus !== 'confirmed' && order.paymentStatus !== 'paid' && (
           <Button 
             className="w-full mt-6 bg-green-600 hover:bg-green-700"
             onClick={handleConfirmPayment}
@@ -158,7 +185,7 @@ const PaymentConfirmationPage: React.FC = () => {
           </Button>
         )}
         
-        {paymentConfirmed && (
+        {(paymentConfirmed || order.paymentStatus === 'confirmed' || order.paymentStatus === 'paid') && (
           <div className="mt-4 p-3 bg-green-50 text-green-800 rounded-md flex items-center">
             <CheckCircle className="h-5 w-5 mr-2" />
             Payment confirmed successfully!
@@ -333,7 +360,7 @@ const PaymentConfirmationPage: React.FC = () => {
       
       {renderPaymentDetails()}
       
-      {paymentConfirmed && (
+      {(paymentConfirmed || (order && (order.paymentStatus === 'confirmed' || order.paymentStatus === 'paid'))) && (
         <>
           {/* Show driver details if assigned */}
           {order?.driver && order.deliveryStatus && 

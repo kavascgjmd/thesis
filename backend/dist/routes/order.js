@@ -40,6 +40,9 @@ const updateStatusSchema = zod_1.z.object({
         lng: zod_1.z.number()
     }).optional()
 });
+const updatePaymentSchema = zod_1.z.object({
+    paymentStatus: zod_1.z.enum(['pending', 'confirmed', 'paid', 'failed'])
+});
 // Get all orders with optional status filtering (admin only)
 router.get('/admin', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -205,6 +208,44 @@ router.get('/:id', (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     catch (error) {
         console.error('Error fetching order:', error);
         return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
+    }
+}));
+router.post('/:id/payment', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const user = req.user;
+        if (!user || typeof user.id !== 'number') {
+            return res.status(401).json({ success: false, message: 'User not authenticated' });
+        }
+        const orderId = parseInt(req.params.id);
+        if (isNaN(orderId)) {
+            return res.status(400).json({ success: false, message: 'Invalid order ID' });
+        }
+        const validationResult = updatePaymentSchema.safeParse(req.body);
+        if (!validationResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid input data',
+                errors: validationResult.error.errors
+            });
+        }
+        // Get order to verify ownership
+        const order = yield orderService_1.default.getOrderById(orderId);
+        if (order.userId !== user.id && user.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to update this order'
+            });
+        }
+        // Update payment status
+        yield orderService_1.default.updatePaymentStatus(orderId, validationResult.data.paymentStatus);
+        return res.status(200).json({
+            success: true,
+            message: 'Payment status updated successfully'
+        });
+    }
+    catch (error) {
+        console.error('Error updating payment status:', error);
+        return res.status(500).json({ success: false, message: 'Failed to update payment status' });
     }
 }));
 // Driver specific order view

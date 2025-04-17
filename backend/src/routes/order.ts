@@ -37,6 +37,11 @@ const updateStatusSchema = z.object({
   }).optional()
 });
 
+const updatePaymentSchema = z.object({
+  paymentStatus: z.enum(['pending', 'confirmed', 'paid', 'failed'])
+});
+
+
 // Get all orders with optional status filtering (admin only)
 router.get('/admin', async (req: Request, res: Response): Promise<any> => {
   try {
@@ -218,6 +223,50 @@ router.get('/:id',  async (req: Request, res: Response) : Promise<any>=> {
     return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
   }
 });
+
+router.post('/:id/payment', authMiddleware, async (req: Request, res: Response): Promise<any> => {
+  try {
+    const user = req.user as UserPayload;
+    if (!user || typeof user.id !== 'number') {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const orderId = parseInt(req.params.id);
+    if (isNaN(orderId)) {
+      return res.status(400).json({ success: false, message: 'Invalid order ID' });
+    }
+
+    const validationResult = updatePaymentSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid input data', 
+        errors: validationResult.error.errors 
+      });
+    }
+
+    // Get order to verify ownership
+    const order = await orderService.getOrderById(orderId);
+    if (order.userId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'You do not have permission to update this order' 
+      });
+    }
+
+    // Update payment status
+    await orderService.updatePaymentStatus(orderId, validationResult.data.paymentStatus);
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Payment status updated successfully' 
+    });
+  } catch (error) {
+    console.error('Error updating payment status:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update payment status' });
+  }
+});
+
 // Driver specific order view
 router.get('/driver/:id', driverAuthMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
