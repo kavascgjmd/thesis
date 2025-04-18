@@ -71,6 +71,24 @@ router.post('/signup', rateLimiterMiddleware, async (req: SignupRequest, res: Re
     }
 }) ;
 
+router.post('/signout', async (req: Request, res: Response): Promise<any> => {
+    try {
+      // Clear the cookie
+      res.clearCookie('token');
+      
+      return res.status(200).json({
+        status: 'success',
+        message: 'Logged out successfully'
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to logout'
+      });
+    }
+  });
+
 router.post('/verify-otp', rateLimiterMiddleware, verifyOtpMiddleware, async (req: Request, res: Response): Promise<any> => {
     try {
         const { phone } = req.body;

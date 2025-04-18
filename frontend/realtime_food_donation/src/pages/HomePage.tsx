@@ -4,19 +4,27 @@ import SearchBar from '../components/SearchBar';
 import Card from '../components/Card';
 import '../styles/Homepage.css';
 import { useAuthStatus } from '../hooks/useAuthStatus';
-import { useDriverAuth } from '../hooks/useDriverAuth'; // Import the updated hook
+import { useDriverAuth } from '../hooks/useDriverAuth';
 import { SignInModal } from './SignInModal';
 import { SignUpModal } from './SignUpModal';
 import { DriverSignInModal } from './DriverSigninModal';
 import { DriverSignUpModal } from './DriverSignUpModal';
 
 const HomePage = () => {
-  const { setIsAuthenticated } = useAuthStatus();
-  // Use the enhanced driver auth hook
+  const { 
+    isAuthenticated, 
+    setIsAuthenticated, 
+    isLoading,
+    userData,
+    logout 
+  } = useAuthStatus();
+  
   const { 
     isDriverAuthenticated, 
     setIsDriverAuthenticated,
-    isDriverLoading
+    isDriverLoading,
+    driverData,
+    driverLogout
   } = useDriverAuth();
   
   const [showSignUpModal, setShowSignUpModal] = useState(false);
@@ -36,6 +44,12 @@ const HomePage = () => {
       <Navbar
         onLoginClick={() => setShowSignInModal(true)}
         onSignUpClick={() => setShowSignUpModal(true)}
+        isAuthenticated={isAuthenticated}
+        isDriverAuthenticated={isDriverAuthenticated}
+        onLogout={logout}
+        onDriverLogout={driverLogout}
+        userData={userData}
+        driverData={driverData}
       />
       
       {showSignInModal && (

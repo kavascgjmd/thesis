@@ -44,10 +44,23 @@ export const useDriverAuth = () => {
     checkDriverAuth();
   }, []);
 
-  const driverLogout = () => {
-    localStorage.removeItem('driverToken');
-    setIsDriverAuthenticated(false);
-    setDriverData(null);
+  const driverLogout = async () => {
+    try {
+      // Send request to backend to clear the cookie
+      await axios.post(`${BASE_URL}/api/driver/logout`, {}, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('driverToken')}`
+        },
+        withCredentials: true
+      });
+    } catch (error) {
+      console.error('Driver logout error:', error);
+    } finally {
+      // Even if the request fails, remove the token from local storage
+      localStorage.removeItem('driverToken');
+      setIsDriverAuthenticated(false);
+      setDriverData(null);
+    }
   };
 
   return {
