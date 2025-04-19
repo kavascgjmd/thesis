@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, CheckCircle, Clock, Truck, Package, MapPin } from 'lucide-react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert/Alert';
 import { Card } from '../components/ui/card/Card';
 import { Button } from '../components/ui/button/Button';
-import DriverDetails from './DriverDetailsPage';
-import DriverLocationMap from './DriverLocationMap';
+import OrderTracking from './OrderTracking';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -17,25 +16,48 @@ const usdToInr = (amount: number): number => {
   return amount * USD_TO_INR_RATE;
 };
 
+interface OrderItem {
+  foodDonationId?: number;
+  food_type?: string;
+  foodType?: string;
+  food_category?: string;
+  foodCategory?: string;
+  donorId?: number;
+  quantity: number;
+  itemTotal?: string;
+  donor_name?: string;
+  donorName?: string;
+  donorContact?: {
+    person: string;
+    number: string;
+  };
+  pickup_location?: string;
+  pickupLocation?: string;
+  expirationTime?: Date | string;
+  servings?: number;
+  weightKg?: number;
+  weight_kg?: number;
+  packageSize?: string;
+  package_size?: string;
+}
+
 interface OrderDetails {
   id: number;
   orderStatus: string;
-  paymentStatus: string;  // We'll use this field to track payment confirmation
+  paymentStatus: string;
   deliveryFee: string;
   totalAmount: string;
   deliveryAddress: string;
-  items: Array<{
-    food_type: string;
-    food_category: string;
-    donor_name: string;
-    quantity?: number;
-    servings?: number;
-    weight_kg?: number;
-    package_size?: string;
-    pickup_location: string;
-  }>;
+  items: OrderItem[];
   route?: {
-    path: Array<{lat: number, lng: number}>;
+    path: Array<{
+      lat: number;
+      lng: number;
+      address?: string;
+      description?: string;
+      type?: 'pickup' | 'delivery';
+    }>;
+    waypoints?: any[];
     totalDistance: number;
     estimatedDuration: number;
   };
@@ -73,16 +95,40 @@ const PaymentConfirmationPage: React.FC = () => {
     fetchOrderDetails(parseInt(orderId));
   }, [orderId]);
 
-  // Refresh order details every 30 seconds for tracking, but only if payment is confirmed
-  useEffect(() => {
-    if (!orderId || !paymentConfirmed) return;
-    
-    const intervalId = setInterval(() => {
-      fetchOrderDetails(parseInt(orderId));
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
-  }, [orderId, paymentConfirmed]);
+  // Normalize the backend data structure to what our component expects
+  const normalizeOrderData = (backendOrder: any): OrderDetails => {
+    // Map items to ensure consistent property access
+    const normalizedItems = backendOrder.items.map((item: any) => ({
+      foodDonationId: item.foodDonationId,
+      foodType: item.food_type || item.foodType,
+      foodCategory: item.food_category || item.foodCategory,
+      donorId: item.donorId,
+      quantity: item.quantity,
+      itemTotal: item.itemTotal,
+      donorName: item.donor_name || item.donorName,
+      donorContact: item.donorContact,
+      pickupLocation: item.pickup_location || item.pickupLocation,
+      expirationTime: item.expirationTime,
+      servings: item.servings,
+      weightKg: item.weightKg || item.weight_kg,
+      packageSize: item.packageSize || item.package_size
+    }));
+
+    // Return normalized order with consistent property names
+    return {
+      id: backendOrder.id,
+      orderStatus: backendOrder.orderStatus,
+      paymentStatus: backendOrder.paymentStatus,
+      deliveryFee: backendOrder.deliveryFee,
+      totalAmount: backendOrder.totalAmount,
+      deliveryAddress: backendOrder.deliveryAddress,
+      items: normalizedItems,
+      route: backendOrder.route,
+      driverLocation: backendOrder.driverLocation,
+      deliveryStatus: backendOrder.deliveryStatus,
+      driver: backendOrder.driver
+    };
+  };
 
   const fetchOrderDetails = async (id: number) => {
     try {
@@ -97,9 +143,13 @@ const PaymentConfirmationPage: React.FC = () => {
       
       const data = await response.json();
       if (data.success) {
-        setOrder(data.order);
+        console.log("Fetched order:", data.order);
+        // Normalize data before setting state
+        const normalizedOrder = normalizeOrderData(data.order);
+        setOrder(normalizedOrder);
+        
         // Check if payment is already confirmed from the server
-        if (data.order.paymentStatus === 'confirmed' || data.order.paymentStatus === 'paid') {
+        if (normalizedOrder.paymentStatus === 'confirmed' || normalizedOrder.paymentStatus === 'paid') {
           setPaymentConfirmed(true);
         }
       } else {
@@ -116,7 +166,7 @@ const PaymentConfirmationPage: React.FC = () => {
     try {
       setLoading(true);
       
-      // Actually update the payment status on the server
+      // Update the payment status on the server
       const response = await fetch(`${API_BASE_URL}/orders/${orderId}/payment`, {
         method: 'POST',
         headers: {
@@ -195,97 +245,6 @@ const PaymentConfirmationPage: React.FC = () => {
     );
   };
 
-  const renderOrderStatus = () => {
-    if (!order) return null;
-    
-    const getStatusStep = () => {
-      if (order.orderStatus === 'completed') return 4;
-      if (order.deliveryStatus === 'delivered') return 4;
-      if (order.deliveryStatus === 'in_transit') return 3;
-      if (order.deliveryStatus === 'picked_up') return 2;
-      if (order.deliveryStatus === 'assigned') return 1;
-      return 0;
-    };
-
-    const currentStep = getStatusStep();
-    
-    return (
-      <Card className="p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Order Status</h2>
-        
-        <div className="relative">
-          {/* Progress bar */}
-          <div className="absolute left-6 top-1 h-full w-0.5 bg-gray-200 z-0" />
-          
-          {/* Status steps */}
-          <div className="space-y-8 relative z-10">
-            <div className="flex items-start">
-              <div className={`rounded-full p-2 ${currentStep >= 0 ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                <Clock className="h-5 w-5" />
-              </div>
-              <div className="ml-4">
-                <h3 className="font-medium">Order Placed</h3>
-                <p className="text-sm text-gray-500">Your donation pickup request has been received</p>
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <div className={`rounded-full p-2 ${currentStep >= 1 ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                <Truck className="h-5 w-5" />
-              </div>
-              <div className="ml-4">
-                <h3 className="font-medium">Driver Assigned</h3>
-                <p className="text-sm text-gray-500">A driver has been assigned to your donation</p>
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <div className={`rounded-full p-2 ${currentStep >= 2 ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                <Package className="h-5 w-5" />
-              </div>
-              <div className="ml-4">
-                <h3 className="font-medium">Food Picked Up</h3>
-                <p className="text-sm text-gray-500">Food has been collected from donors</p>
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <div className={`rounded-full p-2 ${currentStep >= 3 ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                <MapPin className="h-5 w-5" />
-              </div>
-              <div className="ml-4">
-                <h3 className="font-medium">In Transit</h3>
-                <p className="text-sm text-gray-500">Food is being delivered to the NGO</p>
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <div className={`rounded-full p-2 ${currentStep >= 4 ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                <CheckCircle className="h-5 w-5" />
-              </div>
-              <div className="ml-4">
-                <h3 className="font-medium">Delivered</h3>
-                <p className="text-sm text-gray-500">Food has been delivered to the NGO</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {order.route && (
-          <div className="mt-6 pt-4 border-t">
-            <h3 className="font-medium mb-2">Delivery Details</h3>
-            <p className="text-sm">
-              <span className="font-medium">Estimated Time:</span> {Math.ceil(order.route.estimatedDuration)} minutes
-            </p>
-            <p className="text-sm">
-              <span className="font-medium">Distance:</span> {order.route.totalDistance.toFixed(1)} km
-            </p>
-          </div>
-        )}
-      </Card>
-    );
-  };
-
   const renderOrderItems = () => {
     if (!order || !order.items) return null;
     
@@ -296,21 +255,21 @@ const PaymentConfirmationPage: React.FC = () => {
           {order.items.map((item, index) => (
             <div key={index} className="p-3 border rounded-md">
               <div className="flex justify-between">
-                <h3 className="font-medium">{item.food_type}</h3>
-                <span className="text-sm bg-gray-100 px-2 py-1 rounded-full text-gray-700">{item.food_category}</span>
+                <h3 className="font-medium">{item.foodType}</h3>
+                <span className="text-sm bg-gray-100 px-2 py-1 rounded-full text-gray-700">{item.foodCategory}</span>
               </div>
-              <p className="text-sm text-gray-500">From: {item.donor_name}</p>
-              <p className="text-sm text-gray-500">Pickup Location: {item.pickup_location}</p>
+              <p className="text-sm text-gray-500">From: {item.donorName}</p>
+              <p className="text-sm text-gray-500">Pickup Location: {item.pickupLocation}</p>
               
               {/* Conditional rendering based on food category */}
-              {item.food_category === 'Cooked Meal' && item.servings && (
+              {item.foodCategory === 'Cooked Meal' && item.servings && (
                 <p className="text-sm mt-1">Servings: {item.servings}</p>
               )}
-              {item.food_category === 'Raw Ingredients' && item.weight_kg && (
-                <p className="text-sm mt-1">Weight: {item.weight_kg} kg</p>
+              {item.foodCategory === 'Raw Ingredients' && item.weightKg && (
+                <p className="text-sm mt-1">Weight: {item.weightKg} kg</p>
               )}
-              {item.food_category === 'Packaged Items' && item.package_size && (
-                <p className="text-sm mt-1">Package Size: {item.package_size}</p>
+              {item.foodCategory === 'Packaged Items' && item.packageSize && (
+                <p className="text-sm mt-1">Package Size: {item.packageSize}</p>
               )}
               {/* Keep quantity for backward compatibility */}
               {item.quantity && (
@@ -360,26 +319,12 @@ const PaymentConfirmationPage: React.FC = () => {
       
       {renderPaymentDetails()}
       
-      {(paymentConfirmed || (order && (order.paymentStatus === 'confirmed' || order.paymentStatus === 'paid'))) && (
+      {/* If payment is confirmed, show tracking component */}
+      {(paymentConfirmed || order?.paymentStatus === 'confirmed' || order?.paymentStatus === 'paid') && (
         <>
-          {/* Show driver details if assigned */}
-          {order?.driver && order.deliveryStatus && 
-            ['assigned', 'picked_up', 'in_transit'].includes(order.deliveryStatus) && (
-            <DriverDetails driver={order.driver} />
-          )}
-          
-          {/* Show live tracking map if driver has a location and there's a route */}
-          {order?.driver && order.driverLocation && order.route && (
-            <DriverLocationMap
-              orderId={order.id}
-              driverLocation={order.driverLocation}
-              route={order.route}
-              deliveryAddress={order.deliveryAddress}
-              items={order.items}
-            />
-          )}
-          
-          {renderOrderStatus()}
+          {/* Reuse the OrderTracking component instead of duplicating code */}
+          <OrderTracking orderId={orderId} driver={order?.driver} />
+          {/* Just show the order items in this component */}
           {renderOrderItems()}
         </>
       )}

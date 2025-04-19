@@ -178,16 +178,7 @@ class OrderService {
         [paymentStatus, orderId]
       );
       
-      // If payment is confirmed or paid, update order status to processing if it's still pending
-      if (paymentStatus === 'confirmed' || paymentStatus === 'paid') {
-        await query(
-          `UPDATE orders 
-           SET order_status = CASE WHEN order_status = 'pending' THEN 'processing' ELSE order_status END,
-               updated_at = NOW()
-           WHERE id = $1 AND order_status = 'pending'`,
-          [orderId]
-        );
-      }
+  
     } catch (error) {
       console.error('Failed to update payment status:', error);
       throw error;
@@ -541,13 +532,13 @@ class OrderService {
     }
   }
 
-  async getAllOrders(status?: string, driverId?: number): Promise<any[]> {
+  async getAllOrders(status?: string, driverId?: number, paymentStatus?: string): Promise<any[]> {
     try {
       let sqlQuery = `
       SELECT 
         o.id, o.cart_id, o.user_id, o.order_status, o.payment_status,
         o.payment_method, o.delivery_fee, o.total_amount,
-        o.delivery_address, o.created_at,
+        o.delivery_address, o.created_at, o.order_notes,
         d.id as delivery_id, d.driver_id, d.delivery_status,
         u.username as username,
         dr.username as driver_username,
@@ -570,6 +561,12 @@ class OrderService {
         paramIndex++;
       }
     
+      if (paymentStatus) {
+        sqlQuery += ` AND o.payment_status = $${paramIndex}`;
+        params.push(paymentStatus);
+        paramIndex++;
+      }
+    
       if (driverId && status !== 'pending') {
         sqlQuery += ` AND d.driver_id = $${paramIndex}`;
         params.push(driverId);
@@ -579,7 +576,7 @@ class OrderService {
       sqlQuery += `
         GROUP BY o.id, o.cart_id, o.user_id, o.order_status, o.payment_status,
           o.payment_method, o.delivery_fee, o.total_amount, o.delivery_address, 
-          o.created_at, d.id, d.driver_id, d.delivery_status, u.username,dr.username
+          o.created_at, o.order_notes, d.id, d.driver_id, d.delivery_status, u.username, dr.username
         ORDER BY o.created_at DESC
       `;
       
@@ -591,14 +588,14 @@ class OrderService {
     }
   }
   
-  async getOrdersByMultipleStatuses(statusList: string[], driverId?: number): Promise<any[]> {
+  async getOrdersByMultipleStatuses(statusList: string[], driverId?: number, paymentStatus?: string): Promise<any[]> {
     try {
       // Build the query with proper parameterization for the status list
       let sqlQuery = `
         SELECT 
           o.id, o.cart_id, o.user_id, o.order_status, o.payment_status,
           o.payment_method, o.delivery_fee, o.total_amount,
-          o.delivery_address, o.created_at,
+          o.delivery_address, o.created_at, o.order_notes,
           d.id as delivery_id, d.driver_id, d.delivery_status,
           u.username as username,
           dr.username as driver_username,
@@ -615,15 +612,22 @@ class OrderService {
       const params: any[] = [statusList];
       let paramIndex = 2;
         
+      if (paymentStatus) {
+        sqlQuery += ` AND o.payment_status = $${paramIndex}`;
+        params.push(paymentStatus);
+        paramIndex++;
+      }
+  
       if (driverId) {
         sqlQuery += ` AND d.driver_id = $${paramIndex}`;
         params.push(driverId);
+        paramIndex++;
       }
         
       sqlQuery += `
         GROUP BY o.id, o.cart_id, o.user_id, o.order_status, o.payment_status,
           o.payment_method, o.delivery_fee, o.total_amount, o.delivery_address, 
-          o.created_at, d.id, d.driver_id, d.delivery_status, u.username, dr.username
+          o.created_at, o.order_notes, d.id, d.driver_id, d.delivery_status, u.username, dr.username
         ORDER BY o.created_at DESC
       `;
         

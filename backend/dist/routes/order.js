@@ -84,6 +84,7 @@ router.get('/driver', (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 }));
 // General orders endpoint with status filtering (for drivers)
+// General orders endpoint with status filtering (for drivers)
 router.get('/', driverAuthMiddleware_1.driverAuthMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const driver = req.driver;
@@ -91,14 +92,15 @@ router.get('/', driverAuthMiddleware_1.driverAuthMiddleware, (req, res) => __awa
             return res.status(401).json({ success: false, message: 'Driver not authenticated' });
         }
         const status = req.query.status;
+        const paymentStatus = req.query.paymentStatus;
         // Handle comma-separated status values
         if (status && status.includes(',')) {
             const statusList = status.split(',').map(s => s.trim());
-            const orders = yield orderService_1.default.getOrdersByMultipleStatuses(statusList, driver.id);
+            const orders = yield orderService_1.default.getOrdersByMultipleStatuses(statusList, driver.id, paymentStatus);
             return res.status(200).json({ success: true, orders });
         }
         else {
-            const orders = yield orderService_1.default.getAllOrders(status, driver.id);
+            const orders = yield orderService_1.default.getAllOrders(status, driver.id, paymentStatus);
             return res.status(200).json({ success: true, orders });
         }
     }

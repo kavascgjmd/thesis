@@ -11,12 +11,13 @@ interface Order {
   delivery_fee: number;
   created_at: string;
   order_status: string;
+  payment_status: string;
   user_id: number;
   order_notes?: string;
 }
 
 const DeliveryRequestsPage = () => {
-  const navigate = useNavigate(); // Move inside the component
+  const navigate = useNavigate();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +26,8 @@ const DeliveryRequestsPage = () => {
 
   const fetchOrders = async () => {
     try {
-      const response = await axios.get('http://localhost:3000/api/orders?status=pending', {
+      // Updated to filter for pending orders with confirmed payment
+      const response = await axios.get('http://localhost:3000/api/orders?status=pending&paymentStatus=confirmed', {
         withCredentials: true
       });
       
@@ -33,7 +35,7 @@ const DeliveryRequestsPage = () => {
         setOrders(response.data.orders);
       }
     } catch (err) {
-      setError('Failed to fetch delivery requests');
+      setError('Failed to fetch available orders');
       console.error('Error fetching orders:', err);
     } finally {
       setLoading(false);
@@ -89,7 +91,7 @@ const DeliveryRequestsPage = () => {
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Delivery Requests</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Available Delivery Requests</h1>
         <button
           onClick={() => fetchOrders()}
           className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
@@ -110,7 +112,7 @@ const DeliveryRequestsPage = () => {
           <CardContent className="py-8">
             <div className="text-center text-gray-500">
               <Clock className="h-8 w-8 mx-auto mb-3 text-gray-400" />
-              <p>No delivery requests available at the moment</p>
+              <p>No available delivery requests at the moment</p>
               <p className="text-sm mt-1">Check back soon for new requests</p>
             </div>
           </CardContent>

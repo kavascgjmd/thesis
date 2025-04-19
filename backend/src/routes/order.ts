@@ -85,6 +85,7 @@ router.get('/driver', async (req: Request, res: Response): Promise<any> => {
 });
 
 // General orders endpoint with status filtering (for drivers)
+// General orders endpoint with status filtering (for drivers)
 router.get('/', driverAuthMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
     const driver = req.driver as DriverPayload;
@@ -93,13 +94,15 @@ router.get('/', driverAuthMiddleware, async (req: Request, res: Response): Promi
     }
     
     const status = req.query.status as string | undefined;
+    const paymentStatus = req.query.paymentStatus as string | undefined;
+    
     // Handle comma-separated status values
     if (status && status.includes(',')) {
       const statusList = status.split(',').map(s => s.trim());
-      const orders = await orderService.getOrdersByMultipleStatuses(statusList, driver.id);
+      const orders = await orderService.getOrdersByMultipleStatuses(statusList, driver.id, paymentStatus);
       return res.status(200).json({ success: true, orders });
     } else {
-      const orders = await orderService.getAllOrders(status, driver.id);
+      const orders = await orderService.getAllOrders(status, driver.id, paymentStatus);
       return res.status(200).json({ success: true, orders });
     }
   } catch (error) {
