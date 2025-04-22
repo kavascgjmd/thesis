@@ -17,7 +17,8 @@ const cartItemSchema = z.object({
   quantity: z.number().positive(),
   notes: z.string().optional(),
   itemTotal: z.number(), // itemTotal is required now
-  status: z.string().default('ACTIVE') // status field included
+  status: z.string().default('ACTIVE'), // status field included
+  isFromPastEvent: z.boolean().optional() // Added isFromPastEvent flag
 });
 
 const deliveryAddressSchema = z.object({
@@ -28,7 +29,6 @@ router.use(authMiddleware);
 
 router.get('/', async (req: Request, res: Response): Promise<any> => {
   try {
-  
     if (!req.user?.id) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }

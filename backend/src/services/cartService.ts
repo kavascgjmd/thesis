@@ -13,6 +13,7 @@ interface CartItem {
   foodCategory?: string;
   donorName?: string;
   pickupLocation?: string;
+  isFromPastEvent?: boolean 
 }
 
 interface Cart {
@@ -216,7 +217,8 @@ class CartService {
           foodType: item.foodType,
           foodCategory: item.foodCategory,
           donorName: item.donorName,
-          pickupLocation: item.pickupLocation
+          pickupLocation: item.pickupLocation,
+          isFromPastEvent: item.isFromPastEvent 
         });
       }
 

@@ -17,7 +17,13 @@ CREATE TABLE IF NOT EXISTS food_donations (
     image_url VARCHAR(255),
     image_storage VARCHAR(50),
     availability_schedule VARCHAR(255),
-    status VARCHAR(50)
+    status VARCHAR(50),
+    event_is_over BOOLEAN DEFAULT TRUE,
+    event_type VARCHAR(50),
+    preparation_method VARCHAR(50),
+    pricing VARCHAR(20),
+    total_quantity DECIMAL(10,2),
+    number_of_guests INTEGER
 );
   `;
   

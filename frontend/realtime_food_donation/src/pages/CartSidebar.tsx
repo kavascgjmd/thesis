@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Minus, Plus, ShoppingCart, Trash2, User, MapPin } from 'lucide-react';
+import { AlertCircle, Minus, Plus, ShoppingCart, Trash2, User, MapPin, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert/Alert';
 import { debounce } from 'lodash';
 import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
@@ -19,6 +19,7 @@ interface CartItem {
   foodCategory: string; // New field
   donorName: string;
   pickupLocation: string;
+  isFromPastEvent: boolean; // Added to track if item is from past event
 }
 
 interface CartProps {
@@ -36,6 +37,11 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [localQuantities, setLocalQuantities] = useState<Record<number, number>>({});
+
+  // Determine if cart has past or upcoming event items
+  const hasPastEventItems = cart.some(item => item.isFromPastEvent);
+  const hasUpcomingEventItems = cart.some(item => item.isFromPastEvent === false);
+  const eventType = hasPastEventItems ? 'past' : hasUpcomingEventItems ? 'upcoming' : null;
 
   const fetchCart = useCallback(async () => {
     try {
@@ -270,6 +276,21 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
           </div>
         </div>
 
+        {/* Event Type Alert */}
+        {eventType && (
+          <Alert className={`m-4 ${eventType === 'past' ? 'bg-blue-50' : 'bg-yellow-50'}`}>
+            <Info className={`h-4 w-4 ${eventType === 'past' ? 'text-blue-600' : 'text-yellow-600'}`} />
+            <AlertTitle className={eventType === 'past' ? 'text-blue-700' : 'text-yellow-700'}>
+              {eventType === 'past' ? 'Past Event Order' : 'Upcoming Event Order'}
+            </AlertTitle>
+            <AlertDescription className={eventType === 'past' ? 'text-blue-600' : 'text-yellow-600'}>
+              {eventType === 'past' 
+                ? 'You are ordering from past events. These items are available now for pickup or delivery.'
+                : 'You are ordering from upcoming events. Final quantities will be determined by the donor after the event and will only be delivered once the event is over.'}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Error Alert */}
         {error && (
           <Alert variant="destructive" className="m-4">
@@ -304,6 +325,9 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                         <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
                           {item.foodCategory || 'Uncategorized'}
                         </span>
+                        <span className={`text-xs px-2 py-1 rounded-full ${item.isFromPastEvent ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'}`}>
+                          {item.isFromPastEvent ? 'Past' : 'Upcoming'}
+                        </span>
                       </div>
                       
                       {/* Donor information with icon and fallback */}
@@ -319,6 +343,13 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                       </div>
                       
                       {renderItemDetails(item)}
+
+                      {/* Additional note for upcoming events */}
+                      {!item.isFromPastEvent && (
+                        <p className="text-xs text-amber-600 italic mt-1">
+                          *Final quantity determined after event
+                        </p>
+                      )}
                     </div>
                     <button
                       onClick={() => removeItem(item.foodDonationId)}

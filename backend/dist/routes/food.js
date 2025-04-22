@@ -14,15 +14,23 @@ const zod_1 = require("zod");
 const util_1 = require("../db/util");
 const auth_1 = require("../middlewares/auth");
 const router = (0, express_1.Router)();
-// First create the base object schema
+// First create the base object schema with new event fields
 const baseFoodDonationSchema = zod_1.z.object({
     food_type: zod_1.z.string().min(3).max(50),
     food_category: zod_1.z.enum(['Cooked Meal', 'Raw Ingredients', 'Packaged Items']),
-    // Different fields based on food category
+    // Event flag
+    event_is_over: zod_1.z.boolean().default(true),
+    // Original fields for leftover food
     servings: zod_1.z.number().positive().optional(),
     weight_kg: zod_1.z.number().positive().optional(),
     quantity: zod_1.z.number().positive().optional(),
     package_size: zod_1.z.string().optional(),
+    // New event-specific fields
+    total_quantity: zod_1.z.number().positive().optional(),
+    event_type: zod_1.z.enum(['Wedding', 'Birthday', 'Social_Gathering', 'Corporate_Gathering']).optional(),
+    preparation_method: zod_1.z.enum(['Buffet', 'Sit_down_dinner']).optional(),
+    pricing: zod_1.z.enum(['High', 'Low', 'Moderate']).optional(),
+    number_of_guests: zod_1.z.number().positive().optional(),
     expiration_time: zod_1.z.coerce.date(),
     pickup_location: zod_1.z.string().min(5).max(255),
     image: zod_1.z.string().nullable().optional(),
@@ -30,19 +38,39 @@ const baseFoodDonationSchema = zod_1.z.object({
 });
 // Then create the validation schema with refinement
 const foodDonationSchema = baseFoodDonationSchema.refine(data => {
-    // Validate that the appropriate quantity field is provided based on food category
-    if (data.food_category === 'Cooked Meal' && data.servings === undefined) {
-        return false;
+    if (data.event_is_over) {
+        // Validate leftover food fields
+        if (data.food_category === 'Cooked Meal' && data.servings === undefined) {
+            return false;
+        }
+        if (data.food_category === 'Raw Ingredients' && data.weight_kg === undefined) {
+            return false;
+        }
+        if (data.food_category === 'Packaged Items' && (data.quantity === undefined || data.package_size === undefined)) {
+            return false;
+        }
     }
-    if (data.food_category === 'Raw Ingredients' && data.weight_kg === undefined) {
-        return false;
-    }
-    if (data.food_category === 'Packaged Items' && (data.quantity === undefined || data.package_size === undefined)) {
-        return false;
+    else {
+        // Validate event food fields
+        if (data.total_quantity === undefined) {
+            return false;
+        }
+        if (data.event_type === undefined) {
+            return false;
+        }
+        if (data.preparation_method === undefined) {
+            return false;
+        }
+        if (data.pricing === undefined) {
+            return false;
+        }
+        if (data.number_of_guests === undefined) {
+            return false;
+        }
     }
     return true;
 }, {
-    message: "Required quantity fields missing for selected food category"
+    message: "Required fields missing based on food type and event status"
 });
 // Get all available food donations
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -98,8 +126,7 @@ router.get('/:id', (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     catch (error) {
         console.error('Error fetching food donation details:', error);
         res.status(500).json({
-            success: false,
-            message: 'Failed to fetch food donation details'
+            success: false, message: 'Failed to fetch food donation details'
         });
     }
 }));
@@ -134,19 +161,27 @@ router.post('/', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void 0, 
             });
             return;
         }
-        const { food_type, food_category, servings, weight_kg, quantity, package_size, expiration_time, pickup_location, image, availability_schedule } = validationResult.data;
+        const { food_type, food_category, event_is_over, servings, weight_kg, quantity, package_size, total_quantity, event_type, preparation_method, pricing, number_of_guests, expiration_time, pickup_location, image, availability_schedule } = validationResult.data;
         // Create food donation with new fields
         const insertQuery = yield (0, util_1.query)(`INSERT INTO food_donations 
-       (donor_id, food_type, food_category, servings, weight_kg, quantity, package_size, expiration_time, pickup_location, image, availability_schedule, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'AVAILABLE')
+       (donor_id, food_type, food_category, event_is_over, servings, weight_kg, 
+        quantity, package_size, total_quantity, event_type, preparation_method, 
+        pricing, number_of_guests, expiration_time, pickup_location, image, availability_schedule, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'AVAILABLE')
        RETURNING *`, [
             donorQuery.rows[0].id,
             food_type,
             food_category,
+            event_is_over,
             servings,
             weight_kg,
             quantity,
             package_size,
+            total_quantity,
+            event_type,
+            preparation_method,
+            pricing,
+            number_of_guests,
             expiration_time,
             pickup_location,
             image,
@@ -190,8 +225,7 @@ router.put('/:id', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void 0
             });
             return;
         }
-        // Validate input
-        // In the update route
+        // Validate input with partial fields allowed
         const validationResult = baseFoodDonationSchema.partial().safeParse(req.body);
         if (!validationResult.success) {
             res.status(400).json({
