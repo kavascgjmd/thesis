@@ -174,7 +174,8 @@ class CartService {
                         foodType: item.foodType,
                         foodCategory: item.foodCategory,
                         donorName: item.donorName,
-                        pickupLocation: item.pickupLocation
+                        pickupLocation: item.pickupLocation,
+                        isFromPastEvent: item.isFromPastEvent
                     });
                 }
                 yield redisClient_1.default.set(this.getCartKey(userId, cartId), JSON.stringify(cart), { EX: this.CART_EXPIRY });

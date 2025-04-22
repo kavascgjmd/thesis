@@ -24,7 +24,8 @@ const cartItemSchema = zod_1.z.object({
     quantity: zod_1.z.number().positive(),
     notes: zod_1.z.string().optional(),
     itemTotal: zod_1.z.number(), // itemTotal is required now
-    status: zod_1.z.string().default('ACTIVE') // status field included
+    status: zod_1.z.string().default('ACTIVE'), // status field included
+    isFromPastEvent: zod_1.z.boolean().optional() // Added isFromPastEvent flag
 });
 const deliveryAddressSchema = zod_1.z.object({
     deliveryAddress: zod_1.z.string().min(5)

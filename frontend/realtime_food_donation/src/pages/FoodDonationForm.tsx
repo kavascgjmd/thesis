@@ -1,7 +1,7 @@
-import React ,{ useState } from 'react';
-import { zodResolver } from '@hookform/resolvers/zod';
+import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card/Card';
 import { Alert, AlertDescription } from '../components/ui/alert/Alert';
 import { Button } from '../components/ui/button/Button';
@@ -10,20 +10,25 @@ import { Label } from '../components/ui/label/Label';
 import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
 import { RadioGroup, RadioGroupItem } from '../components/ui/alert/RadioGroup';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select/Select';
+import { Switch } from '../components/ui/switch/Switch';
 
-// Updated schema to handle different food categories and structured availability schedule
+// Updated schema to handle different food categories and event details
 const foodDonationSchema = z.object({
   food_type: z.string().min(3, "Food type must be at least 3 characters").max(50, "Food type must be less than 50 characters"),
   food_category: z.enum(["Cooked Meal", "Raw Ingredients", "Packaged Items"], {
     required_error: "Please select a food category",
   }),
+
+  // Event toggle field
+  event_is_over: z.boolean().default(true),
+
   // Fields for different categories - properly handled as optional
   servings: z.union([
     z.number().positive("Number of servings must be positive"),
     z.string().transform(val => val === "" ? undefined : Number(val))
   ]).optional(),
   weight_kg: z.union([
-    z.number().positive("Weight must be positive"), 
+    z.number().positive("Weight must be positive"),
     z.string().transform(val => val === "" ? undefined : Number(val))
   ]).optional(),
   quantity: z.union([
@@ -31,59 +36,116 @@ const foodDonationSchema = z.object({
     z.string().transform(val => val === "" ? undefined : Number(val))
   ]).optional(),
   package_size: z.string().optional(),
+
+  // New fields for events
+  total_quantity: z.union([
+    z.number().positive("Total quantity must be positive"),
+    z.string().transform(val => val === "" ? undefined : Number(val))
+  ]).optional(),
+  event_type: z.enum(["Wedding", "Birthday", "Social_Gathering", "Corporate_Gathering"]).optional(),
+  preparation_method: z.enum(["Buffet", "Sit_down_dinner"]).optional(),
+  pricing: z.enum(["High", "Low", "Moderate"]).optional(),
+  number_of_guests: z.union([
+    z.number().positive("Number of guests must be positive"),
+    z.string().transform(val => val === "" ? undefined : Number(val))
+  ]).optional(),
+
   expiration_time: z.string().min(1, "Expiration time is required"),
   pickup_location: z.string().min(5, "Pickup location must be at least 5 characters").max(255, "Pickup location is too long"),
-  
-  // New fields for structured availability schedule
+
+  // Fields for structured availability schedule
   start_day: z.string().min(1, "Start day is required"),
   end_day: z.string().min(1, "End day is required"),
   start_time: z.string().min(1, "Start time is required"),
   end_time: z.string().min(1, "End time is required"),
-  
+
   // Keep the original field for backend compatibility
   availability_schedule: z.string(),
-  
+
   latitude: z.number().optional(),
   longitude: z.number().optional(),
 }).superRefine((data, ctx) => {
-  // Better conditional validation based on food category
-  if (data.food_category === "Cooked Meal" && 
+  // Conditional validation based on event_is_over flag
+  if (data.event_is_over) {
+    // Original validation for leftover food
+    if (data.food_category === "Cooked Meal" &&
       (data.servings === undefined || data.servings <= 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Number of servings is required for Cooked Meals",
-      path: ["servings"]
-    });
-  }
-  
-  if (data.food_category === "Raw Ingredients" && 
-      (data.weight_kg === undefined || data.weight_kg <= 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Weight in kg is required for Raw Ingredients",
-      path: ["weight_kg"]
-    });
-  }
-  
-  if (data.food_category === "Packaged Items") {
-    if (data.quantity === undefined || data.quantity <= 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Quantity is required for Packaged Items",
-        path: ["quantity"]
+        message: "Number of servings is required for Cooked Meals",
+        path: ["servings"]
       });
     }
-    
-    if (!data.package_size || data.package_size.trim() === "") {
+
+    if (data.food_category === "Raw Ingredients" &&
+      (data.weight_kg === undefined || data.weight_kg <= 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Package size is required for Packaged Items",
-        path: ["package_size"]
+        message: "Weight in kg is required for Raw Ingredients",
+        path: ["weight_kg"]
+      });
+    }
+
+    if (data.food_category === "Packaged Items") {
+      if (data.quantity === undefined || data.quantity <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Quantity is required for Packaged Items",
+          path: ["quantity"]
+        });
+      }
+
+      if (!data.package_size || data.package_size.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Package size is required for Packaged Items",
+          path: ["package_size"]
+        });
+      }
+    }
+  } else {
+    // Validation for upcoming events
+    if (data.total_quantity === undefined || data.total_quantity <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Total quantity (kg) is required for event donations",
+        path: ["total_quantity"]
+      });
+    }
+
+    if (!data.event_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Event type is required",
+        path: ["event_type"]
+      });
+    }
+
+    if (!data.preparation_method) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Preparation method is required",
+        path: ["preparation_method"]
+      });
+    }
+
+    if (!data.pricing) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Pricing category is required",
+        path: ["pricing"]
+      });
+    }
+
+    if (data.number_of_guests === undefined || data.number_of_guests <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Number of guests is required for event donations",
+        path: ["number_of_guests"]
       });
     }
   }
 });
-
 type FoodDonationForm = z.infer<typeof foodDonationSchema>;
 
 // Day options for the select
@@ -97,11 +159,32 @@ const dayOptions = [
   { value: "sun", label: "Sunday" },
 ];
 
+// Event type options
+const eventTypeOptions = [
+  { value: "Wedding", label: "Wedding" },
+  { value: "Birthday", label: "Birthday" },
+  { value: "Social_Gathering", label: "Social Gathering" },
+  { value: "Corporate_Gathering", label: "Corporate Gathering" },
+];
+
+// Preparation method options
+const preparationMethodOptions = [
+  { value: "Buffet", label: "Buffet" },
+  { value: "Sit_down_dinner", label: "Sit-down Dinner" },
+];
+
+// Pricing options
+const pricingOptions = [
+  { value: "High", label: "High" },
+  { value: "Moderate", label: "Moderate" },
+  { value: "Low", label: "Low" },
+];
+
 // Function to format day and time into the required format
 const formatAvailabilitySchedule = (startDay: string, endDay: string, startTime: string, endTime: string): string => {
   // Capitalize first letter of day abbreviations
   const formatDay = (day: string) => day.charAt(0).toUpperCase() + day.slice(1, 3);
-  
+
   // Format time to ensure proper AM/PM format
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -132,10 +215,16 @@ const DonorFoodForm = () => {
     defaultValues: {
       food_type: '',
       food_category: undefined,
+      event_is_over: true,
       servings: undefined,
       weight_kg: undefined,
       quantity: undefined,
       package_size: '',
+      total_quantity: undefined,
+      event_type: undefined,
+      preparation_method: undefined,
+      pricing: undefined,
+      number_of_guests: undefined,
       expiration_time: '',
       pickup_location: '',
       start_day: 'mon',
@@ -146,9 +235,10 @@ const DonorFoodForm = () => {
     }
   });
 
-  // Watch the food category to show/hide relevant fields
+  // Watch fields for conditional rendering
   const selectedFoodCategory = watch('food_category');
-  
+  const eventIsOver = watch('event_is_over');
+
   // Watch schedule fields to update availability_schedule
   const startDay = watch('start_day');
   const endDay = watch('end_day');
@@ -165,7 +255,7 @@ const DonorFoodForm = () => {
 
   const handlePickupLocationChange = (address: string, coordinates?: { lat: number; lng: number }) => {
     setValue('pickup_location', address, { shouldValidate: true });
-    
+
     // Store coordinates if available
     if (coordinates) {
       setValue('latitude', coordinates.lat);
@@ -214,7 +304,7 @@ const DonorFoodForm = () => {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        
+
         {success && (
           <Alert className="mb-6 bg-green-50 text-green-800 border-green-200">
             <AlertDescription>Food donation created successfully!</AlertDescription>
@@ -222,6 +312,29 @@ const DonorFoodForm = () => {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Event toggle switch */}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="event_is_over" className="flex-grow">
+              {eventIsOver ? 'Leftover Food Donation' : 'Event Food Donation'}
+            </Label>
+            <Controller
+              name="event_is_over"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-500">
+                    {eventIsOver ? 'Event is over' : 'Upcoming event'}
+                  </span>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    id="event_is_over"
+                  />
+                </div>
+              )}
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="food_type">Food Type</Label>
             <Input
@@ -266,65 +379,188 @@ const DonorFoodForm = () => {
             )}
           </div>
 
-          {/* Conditional fields based on food category */}
-          {selectedFoodCategory === "Cooked Meal" && (
-            <div className="space-y-2">
-              <Label htmlFor="servings">Number of Servings</Label>
-              <Input
-                id="servings"
-                type="number"
-                placeholder="e.g., 10"
-                {...register('servings', { valueAsNumber: true })}
-                className={errors.servings ? 'border-red-500' : ''}
-              />
-              {errors.servings && (
-                <p className="text-sm text-red-500">{errors.servings.message}</p>
+          {/* Conditional fields for leftover food */}
+          {eventIsOver && (
+            <>
+              {selectedFoodCategory === "Cooked Meal" && (
+                <div className="space-y-2">
+                  <Label htmlFor="servings">Number of Servings</Label>
+                  <Input
+                    id="servings"
+                    type="number"
+                    placeholder="e.g., 10"
+                    {...register('servings', { valueAsNumber: true })}
+                    className={errors.servings ? 'border-red-500' : ''}
+                  />
+                  {errors.servings && (
+                    <p className="text-sm text-red-500">{errors.servings.message}</p>
+                  )}
+                </div>
               )}
-            </div>
+
+              {selectedFoodCategory === "Raw Ingredients" && (
+                <div className="space-y-2">
+                  <Label htmlFor="weight_kg">Weight (kg)</Label>
+                  <Input
+                    id="weight_kg"
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 5.5"
+                    {...register('weight_kg', { valueAsNumber: true })}
+                    className={errors.weight_kg ? 'border-red-500' : ''}
+                  />
+                  {errors.weight_kg && (
+                    <p className="text-sm text-red-500">{errors.weight_kg.message}</p>
+                  )}
+                </div>
+              )}
+
+              {selectedFoodCategory === "Packaged Items" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="quantity">Quantity</Label>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      placeholder="e.g., 12"
+                      {...register('quantity', { valueAsNumber: true })}
+                      className={errors.quantity ? 'border-red-500' : ''}
+                    />
+                    {errors.quantity && (
+                      <p className="text-sm text-red-500">{errors.quantity.message}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="package_size">Package Size</Label>
+                    <Input
+                      id="package_size"
+                      placeholder="e.g., 500g, 1L, Small box"
+                      {...register('package_size')}
+                      className={errors.package_size ? 'border-red-500' : ''}
+                    />
+                    {errors.package_size && (
+                      <p className="text-sm text-red-500">{errors.package_size.message}</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
           )}
 
-          {selectedFoodCategory === "Raw Ingredients" && (
-            <div className="space-y-2">
-              <Label htmlFor="weight_kg">Weight (kg)</Label>
-              <Input
-                id="weight_kg"
-                type="number"
-                step="0.01"
-                placeholder="e.g., 5.5"
-                {...register('weight_kg', { valueAsNumber: true })}
-                className={errors.weight_kg ? 'border-red-500' : ''}
-              />
-              {errors.weight_kg && (
-                <p className="text-sm text-red-500">{errors.weight_kg.message}</p>
-              )}
-            </div>
-          )}
-
-          {selectedFoodCategory === "Packaged Items" && (
+          {/* Conditional fields for event food donation */}
+          {!eventIsOver && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity</Label>
+                <Label htmlFor="total_quantity">Total Quantity (kg)</Label>
                 <Input
-                  id="quantity"
+                  id="total_quantity"
                   type="number"
-                  placeholder="e.g., 12"
-                  {...register('quantity', { valueAsNumber: true })}
-                  className={errors.quantity ? 'border-red-500' : ''}
+                  step="0.01"
+                  placeholder="e.g., 25.5"
+                  {...register('total_quantity', { valueAsNumber: true })}
+                  className={errors.total_quantity ? 'border-red-500' : ''}
                 />
-                {errors.quantity && (
-                  <p className="text-sm text-red-500">{errors.quantity.message}</p>
+                {errors.total_quantity && (
+                  <p className="text-sm text-red-500">{errors.total_quantity.message}</p>
                 )}
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="package_size">Package Size</Label>
+                <Label htmlFor="number_of_guests">Number of Guests</Label>
                 <Input
-                  id="package_size"
-                  placeholder="e.g., 500g, 1L, Small box"
-                  {...register('package_size')}
-                  className={errors.package_size ? 'border-red-500' : ''}
+                  id="number_of_guests"
+                  type="number"
+                  placeholder="e.g., 100"
+                  {...register('number_of_guests', { valueAsNumber: true })}
+                  className={errors.number_of_guests ? 'border-red-500' : ''}
                 />
-                {errors.package_size && (
-                  <p className="text-sm text-red-500">{errors.package_size.message}</p>
+                {errors.number_of_guests && (
+                  <p className="text-sm text-red-500">{errors.number_of_guests.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="event_type">Event Type</Label>
+                <Controller
+                  name="event_type"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select event type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {eventTypeOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.event_type && (
+                  <p className="text-sm text-red-500">{errors.event_type.message}</p>
+                )}
+              </div>
+
+
+              <div className="space-y-2">
+                <Label htmlFor="preparation_method">Preparation Method</Label>
+                <Controller
+                  name="preparation_method"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select preparation method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {preparationMethodOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.preparation_method && (
+                  <p className="text-sm text-red-500">{errors.preparation_method.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="pricing">Pricing</Label>
+                <Controller
+                  name="pricing"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select pricing category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pricingOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.pricing && (
+                  <p className="text-sm text-red-500">{errors.pricing.message}</p>
                 )}
               </div>
             </>
@@ -356,10 +592,10 @@ const DonorFoodForm = () => {
             )}
           </div>
 
-          {/* New structured availability schedule section */}
+          {/* Availability schedule section */}
           <div className="space-y-4">
             <Label>Availability Schedule</Label>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="start_day">Start Day</Label>
@@ -367,8 +603,8 @@ const DonorFoodForm = () => {
                   name="start_day"
                   control={control}
                   render={({ field }) => (
-                    <Select 
-                      value={field.value} 
+                    <Select
+                      value={field.value}
                       onValueChange={field.onChange}
                     >
                       <SelectTrigger>
@@ -388,15 +624,15 @@ const DonorFoodForm = () => {
                   <p className="text-sm text-red-500">{errors.start_day.message}</p>
                 )}
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="end_day">End Day</Label>
                 <Controller
                   name="end_day"
                   control={control}
                   render={({ field }) => (
-                    <Select 
-                      value={field.value} 
+                    <Select
+                      value={field.value}
                       onValueChange={field.onChange}
                     >
                       <SelectTrigger>
@@ -417,7 +653,7 @@ const DonorFoodForm = () => {
                 )}
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="start_time">Start Time</Label>
@@ -431,7 +667,7 @@ const DonorFoodForm = () => {
                   <p className="text-sm text-red-500">{errors.start_time.message}</p>
                 )}
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="end_time">End Time</Label>
                 <Input
@@ -445,11 +681,11 @@ const DonorFoodForm = () => {
                 )}
               </div>
             </div>
-            
+
             <div className="mt-2 text-sm text-gray-500">
               Format: {watch('availability_schedule')}
             </div>
-            
+
             {/* Hidden field to store formatted availability schedule */}
             <input type="hidden" {...register('availability_schedule')} />
           </div>

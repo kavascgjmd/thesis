@@ -3,8 +3,20 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card/Card";
 import { Button } from "../components/ui/button/Button";
 import { Input } from "../components/ui/input/Input";
-import { Clock, MapPin, Utensils, Users, Building, Phone, ShoppingCart } from 'lucide-react';
+import { 
+  Clock, 
+  MapPin, 
+  Utensils, 
+  Users, 
+  Building, 
+  Phone, 
+  ShoppingCart, 
+  Calendar,
+  PieChart,
+  AlertCircle
+} from 'lucide-react';
 import CartSidebar from './CartSidebar';
+import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert/Alert';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -12,11 +24,17 @@ interface FoodDonation {
   id: number;
   donor_id: number;
   food_type: string;
-  food_category: string; // New field
-  servings?: number;      // For Cooked Meals
-  weight_kg?: number;     // For Raw Ingredients
-  quantity?: number;      // For Packaged Items
-  package_size?: string;  // For Packaged Items
+  food_category: string;
+  event_is_over: boolean; // Added to track event status
+  servings?: number;
+  weight_kg?: number;
+  quantity?: number;
+  package_size?: string;
+  total_quantity?: number; // For event predictions
+  event_type?: string;
+  preparation_method?: string;
+  pricing?: string;
+  number_of_guests?: number;
   expiration_time: string;
   pickup_location: string;
   image: string | null;
@@ -34,9 +52,10 @@ interface CartItem {
   quantity: number;
   itemTotal: number;
   foodType: string;
-  foodCategory: string; // New field
+  foodCategory: string;
   donorName: string;
   pickupLocation: string;
+  isFromPastEvent: boolean; // Added to track event source
 }
 
 interface ApiResponse {
@@ -53,6 +72,11 @@ const FoodDetailPage: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartQuantity, setCartQuantity] = useState<number>(0);
+  const [error, setError] = useState<string | null>(null);
+
+  // Determine if cart has past or upcoming event items
+  const hasPastEventItems = cartItems.some(item => item.isFromPastEvent);
+  const hasUpcomingEventItems = cartItems.some(item => !item.isFromPastEvent);
 
   useEffect(() => {
     fetchFoodDetails();
@@ -101,26 +125,37 @@ const FoodDetailPage: React.FC = () => {
     setCartQuantity(newQuantity);
   };
 
+  // Check if the item can be added to cart based on current cart contents
+  const canAddToCart = (food: FoodDonation) => {
+    if (cartItems.length === 0) return true;
+    if (food.event_is_over) return !hasUpcomingEventItems;
+    return !hasPastEventItems;
+  };
+
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!food) return;
   
-    // Check if valid quantity
-    let maxQuantity = 0;
-    if (food.food_category === 'Cooked Meal') {
-      maxQuantity = food.servings || 0;
-    } else if (food.food_category === 'Raw Ingredients') {
-      maxQuantity = Math.floor(food.weight_kg || 0);
-    } else if (food.food_category === 'Packaged Items') {
-      maxQuantity = food.quantity || 0;
+    // Check if can add to cart based on event type
+    if (!canAddToCart(food)) {
+      setError(
+        food.event_is_over
+          ? "You can't mix items from past and upcoming events. Your cart currently contains items from upcoming events."
+          : "You can't mix items from past and upcoming events. Your cart currently contains items from past events."
+      );
+      return;
     }
+  
+    // Check if valid quantity
+    let maxQuantity = getMaxQuantity(food);
     
     if (cartQuantity <= 0 || cartQuantity > maxQuantity) {
-      alert(`Please enter a valid quantity between 1 and ${maxQuantity}`);
+      setError(`Please enter a valid quantity between 1 and ${maxQuantity}`);
       return;
     }
     
     try {
+      setError(null);
       const currentCartItem = cartItems.find(item => item.foodDonationId === food.id);
       
       if (cartQuantity === 0 && currentCartItem) {
@@ -155,7 +190,8 @@ const FoodDetailPage: React.FC = () => {
           foodType: food.food_type,
           foodCategory: food.food_category,
           donorName: food.donor_name,
-          pickupLocation: food.pickup_location
+          pickupLocation: food.pickup_location,
+          isFromPastEvent: food.event_is_over
         };
     
         await fetch(`${API_BASE_URL}/cart/items`, {
@@ -171,6 +207,7 @@ const FoodDetailPage: React.FC = () => {
       await fetchCart();
     } catch (error) {
       console.error('Error updating cart:', error);
+      setError('Failed to update cart');
     }
   };
 
@@ -178,26 +215,41 @@ const FoodDetailPage: React.FC = () => {
     return new Date(datetime).toLocaleString();
   };
 
-  const renderQuantityInfo = (food: FoodDonation) => {
-    switch (food.food_category) {
-      case 'Cooked Meal':
-        return `${food.servings} servings`;
-      case 'Raw Ingredients':
-        return `${food.weight_kg} kg`;
-      case 'Packaged Items':
-        return `${food.quantity} × ${food.package_size}`;
-      default:
-        return `${food.quantity} units`;
+  const getMaxQuantity = (food: FoodDonation) => {
+    if (food.event_is_over) {
+      // Actual quantities for past events
+      if (food.food_category === 'Cooked Meal') {
+        return food.servings || 0;
+      } else if (food.food_category === 'Raw Ingredients') {
+        return Math.floor(food.weight_kg || 0);
+      } else if (food.food_category === 'Packaged Items') {
+        return food.quantity || 0;
+      }
+      return 0;
+    } else {
+      // Predicted quantities for upcoming events
+      return food.total_quantity || 0;
     }
   };
 
-  const getMaxQuantity = (food: FoodDonation) => {
-    if (food.food_category === 'Cooked Meal') {
-      return food.servings;
-    } else if (food.food_category === 'Raw Ingredients') {
-      return Math.floor(food.weight_kg || 0);
-    } else {
-      return food.quantity;
+  const renderQuantityInfo = (food: FoodDonation) => {
+    const quantityLabel = food.event_is_over ? "Actual" : "Predicted";
+    
+    if (!food.event_is_over) {
+      // For upcoming events, show predicted quantity
+      return `${quantityLabel}: ${food.total_quantity || 0} units`;
+    }
+    
+    // For past events, show actual quantities based on food category
+    switch (food.food_category) {
+      case 'Cooked Meal':
+        return `${quantityLabel}: ${food.servings} servings`;
+      case 'Raw Ingredients':
+        return `${quantityLabel}: ${food.weight_kg} kg`;
+      case 'Packaged Items':
+        return `${quantityLabel}: ${food.quantity} × ${food.package_size}`;
+      default:
+        return `${quantityLabel}: ${food.quantity} units`;
     }
   };
 
@@ -216,6 +268,8 @@ const FoodDetailPage: React.FC = () => {
       </div>
     );
   }
+
+  const isAvailable = canAddToCart(food);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -236,8 +290,41 @@ const FoodDetailPage: React.FC = () => {
         </button>
       </div>
 
+      {/* Event type information alert */}
+      <Alert className="mb-6">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Important Order Information</AlertTitle>
+        <AlertDescription>
+          You can order from either past events (available now) or upcoming events (quantities not guaranteed, delivered after event). 
+          You cannot mix items from both types in the same order.
+          {hasPastEventItems && " Your cart currently contains items from past events."}
+          {hasUpcomingEventItems && " Your cart currently contains items from upcoming events."}
+        </AlertDescription>
+      </Alert>
+
+      {/* Error alert */}
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Event type disclaimer for upcoming events */}
+      {!food.event_is_over && (
+        <Alert className="mb-6 bg-yellow-50">
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <AlertTitle className="text-yellow-700">Upcoming Event Notice</AlertTitle>
+          <AlertDescription className="text-yellow-600">
+            Ordering from upcoming events doesn't guarantee the exact quantities. Final amounts will be determined 
+            by the donor after the event and will only be delivered once the event is over.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="max-w-3xl mx-auto">
-        <Card className="mb-6">
+        <Card className={`mb-6 ${!isAvailable ? 'opacity-60' : ''}`}>
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
               <span className="text-2xl">{food.food_type}</span>
@@ -247,6 +334,9 @@ const FoodDetailPage: React.FC = () => {
                 </span>
                 <span className="text-sm px-3 py-1 bg-blue-100 text-blue-800 rounded">
                   {food.food_category}
+                </span>
+                <span className={`text-sm px-3 py-1 rounded ${food.event_is_over ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'}`}>
+                  {food.event_is_over ? 'Past Event' : 'Upcoming Event'}
                 </span>
               </div>
             </CardTitle>
@@ -266,8 +356,38 @@ const FoodDetailPage: React.FC = () => {
                 <h3 className="text-xl font-semibold">Food Details</h3>
                 <div className="flex items-center gap-2">
                   <Utensils className="h-5 w-5" />
-                  <span>Available: {renderQuantityInfo(food)}</span>
+                  <span>{renderQuantityInfo(food)}</span>
                 </div>
+                
+                {!food.event_is_over && (
+                  <>
+                    {food.event_type && (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-5 w-5" />
+                        <span>Event Type: {food.event_type.replace('_', ' ')}</span>
+                      </div>
+                    )}
+                    {food.preparation_method && (
+                      <div className="flex items-center gap-2">
+                        <Utensils className="h-5 w-5" />
+                        <span>Preparation: {food.preparation_method.replace('_', ' ')}</span>
+                      </div>
+                    )}
+                    {food.number_of_guests && (
+                      <div className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        <span>Expected Guests: {food.number_of_guests}</span>
+                      </div>
+                    )}
+                    {food.pricing && (
+                      <div className="flex items-center gap-2">
+                        <PieChart className="h-5 w-5" />
+                        <span>Pricing Level: {food.pricing}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                
                 <div className="flex items-center gap-2">
                   <Clock className="h-5 w-5" />
                   <span>Expires: {formatDateTime(food.expiration_time)}</span>
@@ -296,6 +416,12 @@ const FoodDetailPage: React.FC = () => {
                   <MapPin className="h-5 w-5" />
                   <span>{food.pickup_location}</span>
                 </div>
+                {food.operating_hours && (
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    <span>Operating Hours: {food.operating_hours}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -309,15 +435,23 @@ const FoodDetailPage: React.FC = () => {
                   onChange={(e) => handleQuantityInputChange(e.target.value)}
                   className="w-24"
                   placeholder="Qty"
+                  disabled={!isAvailable}
                 />
                 <Button
                   onClick={handleAddToCart}
                   className="ml-2"
+                  disabled={!isAvailable}
                 >
-                  Add to Cart
+                  {isAvailable ? 'Add to Cart' : 'Unavailable'}
                 </Button>
               </div>
             </div>
+
+            {!food.event_is_over && (
+              <div className="text-xs text-amber-600 italic mt-1 text-center">
+                *Final quantities will be determined after the event
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
