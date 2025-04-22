@@ -94,9 +94,11 @@ class CartService {
                     cart.items = cart.items.map((item) => {
                         const details = donationDetailsMap.get(item.foodDonationId);
                         if (details) {
-                            return Object.assign(Object.assign({}, item), { foodType: details.foodType, foodCategory: details.foodCategory, donorName: details.donorName, pickupLocation: details.pickupLocation, servings: details.servings, weightKg: details.weightKg, packageSize: details.packageSize });
+                            return Object.assign(Object.assign({}, item), { foodType: details.foodType, foodCategory: details.foodCategory, donorName: details.donorName, pickupLocation: details.pickupLocation, servings: details.servings, weightKg: details.weightKg, packageSize: details.packageSize, isFromPastEvent: item.isFromPastEvent !== undefined ? item.isFromPastEvent : false // Ensure this field exists
+                             });
                         }
-                        return item;
+                        return Object.assign(Object.assign({}, item), { isFromPastEvent: item.isFromPastEvent !== undefined ? item.isFromPastEvent : false // Ensure this field exists
+                         });
                     });
                 }
                 return Object.assign(Object.assign({}, cart), { status: cart.status || 'PENDING', deliveryFee: cart.deliveryFee || 0, totalAmount: cart.totalAmount || 0 });
@@ -174,7 +176,8 @@ class CartService {
                         foodType: item.foodType,
                         foodCategory: item.foodCategory,
                         donorName: item.donorName,
-                        pickupLocation: item.pickupLocation
+                        pickupLocation: item.pickupLocation,
+                        isFromPastEvent: item.isFromPastEvent !== undefined ? item.isFromPastEvent : false // Ensure default value
                     });
                 }
                 yield redisClient_1.default.set(this.getCartKey(userId, cartId), JSON.stringify(cart), { EX: this.CART_EXPIRY });
@@ -227,6 +230,10 @@ class CartService {
                     }
                 }
                 cart.items[itemIndex] = Object.assign(Object.assign({}, cart.items[itemIndex]), updates);
+                // Ensure isFromPastEvent exists
+                if (cart.items[itemIndex].isFromPastEvent === undefined) {
+                    cart.items[itemIndex].isFromPastEvent = false;
+                }
                 yield redisClient_1.default.set(this.getCartKey(userId, cartId), JSON.stringify(cart), { EX: this.CART_EXPIRY });
             }
             catch (error) {
@@ -418,9 +425,17 @@ class CartService {
             quantity,
             status,
             notes,
+            is_from_past_event,
             created_at
           )
-          VALUES ($1, $2, $3, $4, $5, NOW())`, [cartId, item.foodDonationId, item.quantity, 'ACTIVE', item.notes]);
+          VALUES ($1, $2, $3, $4, $5, $6, NOW())`, [
+                        cartId,
+                        item.foodDonationId,
+                        item.quantity,
+                        'ACTIVE',
+                        item.notes,
+                        item.isFromPastEvent || false // Include isFromPastEvent field in database insertion
+                    ]);
                     // Update food donation with appropriate field based on category
                     yield (0, util_1.query)(updateQuery, [item.quantity, item.foodDonationId]);
                 }

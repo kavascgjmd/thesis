@@ -17,11 +17,18 @@ const cartItemSchema = z.object({
   quantity: z.number().positive(),
   notes: z.string().optional(),
   itemTotal: z.number(), // itemTotal is required now
-  status: z.string().default('ACTIVE') // status field included
+  status: z.string().default('ACTIVE'), // status field included
+  foodType: z.string().optional(),
+  foodCategory: z.string().optional(),
+  donorName: z.string().optional(),
+  pickupLocation: z.string().optional(),
+  isFromPastEvent: z.boolean().default(false) // Default value added
 });
 
 const deliveryAddressSchema = z.object({
-  deliveryAddress: z.string().min(5)
+  deliveryAddress: z.string().min(5),
+  deliveryLatitude: z.number().optional(),
+  deliveryLongitude: z.number().optional()
 });
 
 router.use(authMiddleware);
@@ -34,7 +41,16 @@ router.get('/', async (req: Request, res: Response): Promise<any> => {
     }
 
     const cart = await cartService.getCart(req.user.id);
-    return res.status(200).json({ success: true, cart: cart || { items: [] } });
+    return res.status(200).json({ 
+      success: true, 
+      cart: cart || { 
+        items: [], 
+        userId: req.user.id, 
+        deliveryFee: 0, 
+        totalAmount: 0, 
+        status: 'PENDING' 
+      } 
+    });
   } catch (error) {
     console.error('Error fetching cart:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch cart' });
@@ -51,8 +67,14 @@ router.post('/items', async (req: Request, res: Response): Promise<any> => {
     if (!validationResult.success) {
       return res.status(400).json({ success: false, message: 'Invalid input data', errors: validationResult.error.errors });
     }
-
-    await cartService.addToCart(req.user.id, validationResult.data);
+    
+    // Make sure isFromPastEvent is included with default value if not provided
+    const itemData = {
+      ...validationResult.data,
+      isFromPastEvent: validationResult.data.isFromPastEvent !== undefined ? validationResult.data.isFromPastEvent : false
+    };
+    
+    await cartService.addToCart(req.user.id, itemData);
     return res.status(200).json({ success: true, message: 'Item added to cart successfully' });
   } catch (error) {
     console.error('Error adding item to cart:', error);
@@ -126,8 +148,11 @@ router.post('/checkout', async (req: Request, res: Response): Promise<any> => {
     // 1. First persist the cart to get cartId
     const cart = await cartService.persistCart(
       req.user.id, 
-      validationResult.data.deliveryAddress
+      validationResult.data.deliveryAddress,
+      validationResult.data.deliveryLatitude,
+      validationResult.data.deliveryLongitude
     );
+    
     // 2. Create order with proper fee calculation
     const orderId = await orderService.createOrderFromCart(
       cart.cartId,
@@ -137,7 +162,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<any> => {
 
     return res.status(200).json({ 
       success: true, 
-      message: 'Cart checked out successfully', 
+      message: 'Cart checkout successfully', 
       cartId: cart.cartId,
       orderId 
     });

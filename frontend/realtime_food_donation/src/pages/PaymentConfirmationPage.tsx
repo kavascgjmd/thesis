@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert/Alert';
 import { Card } from '../components/ui/card/Card';
 import { Button } from '../components/ui/button/Button';
@@ -136,18 +136,18 @@ const PaymentConfirmationPage: React.FC = () => {
       const response = await fetch(`${API_BASE_URL}/orders/user/${id}`, {
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch order details');
       }
-      
+
       const data = await response.json();
       if (data.success) {
         console.log("Fetched order:", data.order);
         // Normalize data before setting state
         const normalizedOrder = normalizeOrderData(data.order);
         setOrder(normalizedOrder);
-        
+
         // Check if payment is already confirmed from the server
         if (normalizedOrder.paymentStatus === 'confirmed' || normalizedOrder.paymentStatus === 'paid') {
           setPaymentConfirmed(true);
@@ -161,11 +161,11 @@ const PaymentConfirmationPage: React.FC = () => {
       setLoading(false);
     }
   };
-  
+
   const handleConfirmPayment = async () => {
     try {
       setLoading(true);
-      
+
       // Update the payment status on the server
       const response = await fetch(`${API_BASE_URL}/orders/${orderId}/payment`, {
         method: 'POST',
@@ -175,14 +175,14 @@ const PaymentConfirmationPage: React.FC = () => {
         credentials: 'include',
         body: JSON.stringify({ paymentStatus: 'confirmed' })
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to update payment status');
       }
-      
+
       // Update local state to show payment confirmed
       setPaymentConfirmed(true);
-      
+
       // Refresh order details after payment
       if (orderId) {
         fetchOrderDetails(parseInt(orderId));
@@ -196,16 +196,32 @@ const PaymentConfirmationPage: React.FC = () => {
 
   const renderPaymentDetails = () => {
     if (!order) return null;
-    
+
     // Use the deliveryFee directly from the backend
     const deliveryFee = parseFloat(order.deliveryFee) || 0;
-    
+
     // Convert to INR
     const deliveryFeeInr = usdToInr(deliveryFee);
-    
+
+    // Check if this order is waiting for donor approval
+    const isPendingDonorApproval = order.orderStatus === 'pending_donor_approval';
+
     return (
       <Card className="p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Payment Details</h2>
+
+        {isPendingDonorApproval && (
+          <Alert className="mb-4 bg-yellow-50">
+            <Info className="h-4 w-4 text-yellow-600" />
+            <AlertTitle className="text-yellow-700">
+              Awaiting Donor Approval
+            </AlertTitle>
+            <AlertDescription className="text-yellow-600">
+              This order includes items from upcoming events. The order will be processed after donor confirmation when the event is completed.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="space-y-2">
           <div className="flex justify-between">
             <span>Delivery Fee ({order.route?.totalDistance.toFixed(1) || 0} km):</span>
@@ -217,9 +233,9 @@ const PaymentConfirmationPage: React.FC = () => {
             <span>₹{deliveryFeeInr.toFixed(2)}</span>
           </div>
         </div>
-        
+
         {!paymentConfirmed && order.paymentStatus !== 'confirmed' && order.paymentStatus !== 'paid' && (
-          <Button 
+          <Button
             className="w-full mt-6 bg-green-600 hover:bg-green-700"
             onClick={handleConfirmPayment}
             disabled={loading}
@@ -227,11 +243,16 @@ const PaymentConfirmationPage: React.FC = () => {
             {loading ? 'Processing...' : 'Confirm Payment'}
           </Button>
         )}
-        
+
         {(paymentConfirmed || order.paymentStatus === 'confirmed' || order.paymentStatus === 'paid') && (
           <div className="mt-4 p-3 bg-green-50 text-green-800 rounded-md flex items-center">
             <CheckCircle className="h-5 w-5 mr-2" />
             Payment confirmed successfully!
+            {isPendingDonorApproval && (
+              <span className="ml-1 text-sm text-amber-600">
+                (Order will be processed after donor approval)
+              </span>
+            )}
           </div>
         )}
       </Card>
@@ -240,7 +261,7 @@ const PaymentConfirmationPage: React.FC = () => {
 
   const renderOrderItems = () => {
     if (!order || !order.items) return null;
-    
+
     return (
       <Card className="p-6">
         <h2 className="text-xl font-semibold mb-4">Order Items</h2>
@@ -253,7 +274,7 @@ const PaymentConfirmationPage: React.FC = () => {
               </div>
               <p className="text-sm text-gray-500">From: {item.donorName}</p>
               <p className="text-sm text-gray-500">Pickup Location: {item.pickupLocation}</p>
-              
+
               {/* Conditional rendering based on food category */}
               {item.foodCategory === 'Cooked Meal' && item.servings && (
                 <p className="text-sm mt-1">Servings: {item.servings}</p>
@@ -302,21 +323,23 @@ const PaymentConfirmationPage: React.FC = () => {
     <div className="container mx-auto max-w-4xl p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Order #{orderId}</h1>
-        <Button 
+        <Button
           variant="outline"
           onClick={() => navigate('/donations')}
         >
           Back to Donations
         </Button>
       </div>
-      
+
       {renderPaymentDetails()}
-      
+
       {/* If payment is confirmed, show tracking component */}
       {(paymentConfirmed || order?.paymentStatus === 'confirmed' || order?.paymentStatus === 'paid') && (
         <>
-          {/* Reuse the OrderTracking component instead of duplicating code */}
-          <OrderTracking orderId={orderId} driver={order?.driver} />
+          {/* Only show tracking if not pending donor approval */}
+          {order?.orderStatus !== 'pending_donor_approval' && (
+            <OrderTracking orderId={orderId} driver={order?.driver} />
+          )}
           {/* Just show the order items in this component */}
           {renderOrderItems()}
         </>
