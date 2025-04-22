@@ -13,7 +13,8 @@ interface CartItem {
   foodCategory?: string;
   donorName?: string;
   pickupLocation?: string;
-  isFromPastEvent?: boolean 
+  isFromPastEvent: boolean; // Changed from optional to required
+
 }
 
 interface Cart {
@@ -120,10 +121,14 @@ class CartService {
               pickupLocation: details.pickupLocation,
               servings: details.servings,
               weightKg: details.weightKg,
-              packageSize: details.packageSize
+              packageSize: details.packageSize,
+              isFromPastEvent: item.isFromPastEvent !== undefined ? item.isFromPastEvent : false // Ensure this field exists
             };
           }
-          return item;
+          return {
+            ...item,
+            isFromPastEvent: item.isFromPastEvent !== undefined ? item.isFromPastEvent : false // Ensure this field exists
+          };
         });
       }
   
@@ -143,6 +148,7 @@ class CartService {
     try {
       // Only cleanup if creating a new cart and no existing cart is found
       const existingCart = await this.getCart(userId, cartId);
+
       if (!cartId && !existingCart) {
         await this.cleanupOldCarts(userId);
       }
@@ -218,7 +224,8 @@ class CartService {
           foodCategory: item.foodCategory,
           donorName: item.donorName,
           pickupLocation: item.pickupLocation,
-          isFromPastEvent: item.isFromPastEvent 
+          isFromPastEvent: item.isFromPastEvent !== undefined ? item.isFromPastEvent : false // Ensure default value
+
         });
       }
 
@@ -282,6 +289,11 @@ class CartService {
       }
 
       cart.items[itemIndex] = { ...cart.items[itemIndex], ...updates };
+      
+      // Ensure isFromPastEvent exists
+      if (cart.items[itemIndex].isFromPastEvent === undefined) {
+        cart.items[itemIndex].isFromPastEvent = false;
+      }
 
       await redisClient.set(
         this.getCartKey(userId, cartId),
@@ -519,10 +531,18 @@ class CartService {
             quantity,
             status,
             notes,
+            is_from_past_event,
             created_at
           )
-          VALUES ($1, $2, $3, $4, $5, NOW())`,
-          [cartId, item.foodDonationId, item.quantity, 'ACTIVE', item.notes]
+          VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [
+            cartId, 
+            item.foodDonationId, 
+            item.quantity, 
+            'ACTIVE', 
+            item.notes,
+            item.isFromPastEvent || false // Include isFromPastEvent field in database insertion
+          ]
         );
 
         // Update food donation with appropriate field based on category

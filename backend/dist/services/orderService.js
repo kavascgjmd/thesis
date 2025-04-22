@@ -19,6 +19,7 @@ class OrderService {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 yield (0, util_1.query)('BEGIN');
+                // Delete outdated items from cart
                 yield (0, util_1.query)('DELETE FROM cart_items WHERE cart_id = $1 AND created_at < (SELECT created_at FROM carts WHERE id = $1)', [cartId]);
                 // Get cart details
                 const cartResult = yield (0, util_1.query)('SELECT total_amount, delivery_fee FROM carts WHERE id = $1 FOR UPDATE', [cartId]);
@@ -33,7 +34,17 @@ class OrderService {
                 // Use NUMERIC type for deliveryFee and totalAmount to match the new schema
                 const deliveryFee = parseFloat(cartResult.rows[0].delivery_fee);
                 const totalAmount = parseFloat(cartResult.rows[0].total_amount);
-                // Create order using the new schema with NUMERIC types
+                // Check if any items are from upcoming events
+                const upcomingEventCheck = yield (0, util_1.query)(`SELECT ci.is_from_past_event 
+         FROM cart_items ci 
+         WHERE ci.cart_id = $1 AND ci.is_from_past_event = false
+         LIMIT 1`, [cartId]);
+                // Set order status based on whether there are upcoming event items
+                // If any items are from upcoming events (is_from_past_event = false), set to pending_donor_approval
+                const orderStatus = upcomingEventCheck.rows.length > 0 ? 'pending_donor_approval' : 'pending';
+                console.log(cartId);
+                ;
+                // Create order using the new schema with NUMERIC types and the determined status
                 const orderResult = yield (0, util_1.query)(`INSERT INTO orders (
           cart_id,
           user_id,
@@ -46,12 +57,13 @@ class OrderService {
           created_at,
           updated_at
         )
-        VALUES ($1, $2, 'pending', 'pending', 'free', $3, $4, $5, NOW(), NOW())
+        VALUES ($1, $2, $3, 'pending', 'free', $4, $5, $6, NOW(), NOW())
         RETURNING id`, [
                     cartId,
                     userId,
-                    deliveryFee, // Now passing as NUMERIC
-                    totalAmount, // Now passing as NUMERIC
+                    orderStatus, // Now using dynamic order status
+                    deliveryFee,
+                    totalAmount,
                     deliveryAddress
                 ]);
                 const orderId = orderResult.rows[0].id;
@@ -77,44 +89,35 @@ class OrderService {
                 if (!validStatuses.includes(paymentStatus)) {
                     throw new Error('Invalid payment status');
                 }
-                // Update the payment status in the orders table
-                yield (0, util_1.query)(`UPDATE orders 
-         SET payment_status = $1, 
-             updated_at = NOW()
-         WHERE id = $2`, [paymentStatus, orderId]);
+                // Get the current order status to check if it's a pending_donor_approval order
+                const orderStatusResult = yield (0, util_1.query)('SELECT order_status FROM orders WHERE id = $1', [orderId]);
+                if (!orderStatusResult.rows.length) {
+                    throw new Error('Order not found');
+                }
+                const currentOrderStatus = orderStatusResult.rows[0].order_status;
+                // If it's a pending_donor_approval order, don't change the order status
+                // For other orders, update both payment_status and order_status accordingly
+                if (currentOrderStatus === 'pending_donor_approval') {
+                    // Only update payment status, maintaining the pending_donor_approval status
+                    yield (0, util_1.query)(`UPDATE orders 
+           SET payment_status = $1, 
+               updated_at = NOW()
+           WHERE id = $2`, [paymentStatus, orderId]);
+                }
+                else {
+                    // For regular orders, update both statuses
+                    const newOrderStatus = paymentStatus === 'confirmed' || paymentStatus === 'paid' ? 'in_progress' : currentOrderStatus;
+                    yield (0, util_1.query)(`UPDATE orders 
+           SET payment_status = $1,
+               order_status = $2,
+               updated_at = NOW()
+           WHERE id = $3`, [paymentStatus, newOrderStatus, orderId]);
+                }
             }
             catch (error) {
                 console.error('Failed to update payment status:', error);
                 throw error;
             }
-        });
-    }
-    getDeliveryPoints(cartId, deliveryAddress) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const points = [];
-            // Start with customer's delivery address
-            points.push({
-                address: deliveryAddress,
-                type: 'delivery'
-            });
-            // Get pickup points from cart items
-            const pickupPoints = yield (0, util_1.query)(`SELECT DISTINCT fd.pickup_location
-       FROM cart_items ci
-       JOIN food_donations fd ON ci.food_donation_id = fd.id
-       WHERE ci.cart_id = $1`, [cartId]);
-            // Add all pickup points
-            pickupPoints.rows.forEach(point => {
-                points.push({
-                    address: point.pickup_location,
-                    type: 'pickup'
-                });
-            });
-            // End with return to customer's delivery address
-            points.push({
-                address: deliveryAddress,
-                type: 'delivery'
-            });
-            return points;
         });
     }
     calculateEstimatedDeliveryFee(points) {

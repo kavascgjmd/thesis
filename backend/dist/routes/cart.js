@@ -25,10 +25,20 @@ const cartItemSchema = zod_1.z.object({
     notes: zod_1.z.string().optional(),
     itemTotal: zod_1.z.number(), // itemTotal is required now
     status: zod_1.z.string().default('ACTIVE'), // status field included
+<<<<<<< HEAD
     isFromPastEvent: zod_1.z.boolean().optional() // Added isFromPastEvent flag
+=======
+    foodType: zod_1.z.string().optional(),
+    foodCategory: zod_1.z.string().optional(),
+    donorName: zod_1.z.string().optional(),
+    pickupLocation: zod_1.z.string().optional(),
+    isFromPastEvent: zod_1.z.boolean().default(false) // Default value added
+>>>>>>> ammends
 });
 const deliveryAddressSchema = zod_1.z.object({
-    deliveryAddress: zod_1.z.string().min(5)
+    deliveryAddress: zod_1.z.string().min(5),
+    deliveryLatitude: zod_1.z.number().optional(),
+    deliveryLongitude: zod_1.z.number().optional()
 });
 router.use(auth_1.authMiddleware);
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -38,7 +48,16 @@ router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             return res.status(401).json({ success: false, message: 'User not authenticated' });
         }
         const cart = yield cartService_1.default.getCart(req.user.id);
-        return res.status(200).json({ success: true, cart: cart || { items: [] } });
+        return res.status(200).json({
+            success: true,
+            cart: cart || {
+                items: [],
+                userId: req.user.id,
+                deliveryFee: 0,
+                totalAmount: 0,
+                status: 'PENDING'
+            }
+        });
     }
     catch (error) {
         console.error('Error fetching cart:', error);
@@ -55,7 +74,9 @@ router.post('/items', (req, res) => __awaiter(void 0, void 0, void 0, function* 
         if (!validationResult.success) {
             return res.status(400).json({ success: false, message: 'Invalid input data', errors: validationResult.error.errors });
         }
-        yield cartService_1.default.addToCart(req.user.id, validationResult.data);
+        // Make sure isFromPastEvent is included with default value if not provided
+        const itemData = Object.assign(Object.assign({}, validationResult.data), { isFromPastEvent: validationResult.data.isFromPastEvent !== undefined ? validationResult.data.isFromPastEvent : false });
+        yield cartService_1.default.addToCart(req.user.id, itemData);
         return res.status(200).json({ success: true, message: 'Item added to cart successfully' });
     }
     catch (error) {
@@ -125,12 +146,12 @@ router.post('/checkout', (req, res) => __awaiter(void 0, void 0, void 0, functio
             });
         }
         // 1. First persist the cart to get cartId
-        const cart = yield cartService_1.default.persistCart(req.user.id, validationResult.data.deliveryAddress);
+        const cart = yield cartService_1.default.persistCart(req.user.id, validationResult.data.deliveryAddress, validationResult.data.deliveryLatitude, validationResult.data.deliveryLongitude);
         // 2. Create order with proper fee calculation
         const orderId = yield orderService_1.default.createOrderFromCart(cart.cartId, req.user.id, validationResult.data.deliveryAddress);
         return res.status(200).json({
             success: true,
-            message: 'Cart checked out successfully',
+            message: 'Cart checkout successfully',
             cartId: cart.cartId,
             orderId
         });
