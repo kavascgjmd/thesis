@@ -197,31 +197,24 @@ const PaymentConfirmationPage: React.FC = () => {
   const renderPaymentDetails = () => {
     if (!order) return null;
     
+    // Use the deliveryFee directly from the backend
     const deliveryFee = parseFloat(order.deliveryFee) || 0;
-    const distanceFee = order.route ? order.route.totalDistance * 0.5 : 0; // $0.50 per km
     
     // Convert to INR
     const deliveryFeeInr = usdToInr(deliveryFee);
-    const distanceFeeInr = usdToInr(distanceFee);
-    const totalAmountInr = deliveryFeeInr + distanceFeeInr;
-    const ratePerKmInr = usdToInr(0.5);
     
     return (
       <Card className="p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Payment Details</h2>
         <div className="space-y-2">
           <div className="flex justify-between">
-            <span>Base Delivery Fee:</span>
+            <span>Delivery Fee ({order.route?.totalDistance.toFixed(1) || 0} km):</span>
             <span>₹{deliveryFeeInr.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Distance Fee ({order.route?.totalDistance.toFixed(1) || 0} km × ₹{ratePerKmInr.toFixed(2)}/km):</span>
-            <span>₹{distanceFeeInr.toFixed(2)}</span>
           </div>
           <div className="h-px bg-gray-200 my-2"></div>
           <div className="flex justify-between font-bold">
             <span>Total Amount:</span>
-            <span>₹{totalAmountInr.toFixed(2)}</span>
+            <span>₹{deliveryFeeInr.toFixed(2)}</span>
           </div>
         </div>
         

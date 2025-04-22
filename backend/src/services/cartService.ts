@@ -29,6 +29,9 @@ interface Cart {
 class CartService {
   private readonly CART_EXPIRY = 24 * 60 * 60; // 24 hours
   private readonly CART_INACTIVE_THRESHOLD = 12 * 60 * 60; // 12 hours
+  private readonly BASE_DELIVERY_FEE = 0; // Base fee for delivery
+  private readonly PER_KM_RATE = 0.5; // Rate per kilometer
+  private readonly ADDITIONAL_STOP_FEE = 1; // Additional fee per pickup stop
 
   private getCartKey(userId: number, cartId?: number): string {
     return cartId ? `cart:${userId}:${cartId}` : `cart:${userId}:temp`;
@@ -350,7 +353,7 @@ class CartService {
         }
       }
 
-      // Calculate delivery route and fee
+      // Calculate delivery route and fee using proper routing algorithm
       const startingPoint = { type: 'start', location: deliveryAddress };
       const pickupPoints = foodDonationsResult.rows.map(fd => ({
         type: 'pickup' as const,
@@ -361,30 +364,56 @@ class CartService {
       const finalDelivery = { type: 'delivery', location: deliveryAddress };
       const points = [startingPoint, ...pickupPoints, finalDelivery];
 
+      // Calculate optimal route using the proper algorithm from mapService
       let totalDistance = 0;
+      let optimizedRoute;
       
       // If we have precise coordinates, use them, otherwise geocode the address
       const useProvidedCoordinates = deliveryLatitude !== undefined && deliveryLongitude !== undefined;
       
-      for (let i = 0; i < points.length - 1; i++) {
-        const startCoords = i === 0 && useProvidedCoordinates 
-          ? { lat: deliveryLatitude!, lng: deliveryLongitude! }
-          : await mapService.getCoordinates(points[i].location);
-          
-        const endCoords = i === points.length - 2 && useProvidedCoordinates 
-          ? { lat: deliveryLatitude!, lng: deliveryLongitude! }
-          : await mapService.getCoordinates(points[i + 1].location);
-        
-        const distance = mapService.calculateDistance(
-          startCoords.lat,
-          startCoords.lng,
-          endCoords.lat,
-          endCoords.lng
-        );
-        totalDistance += distance;
+      // Prepare points for route calculation
+      const routePoints = [];
+      
+      // Add delivery address as starting point
+      const startCoords = useProvidedCoordinates
+        ? { lat: deliveryLatitude!, lng: deliveryLongitude!, address: deliveryAddress }
+        : await mapService.getCoordinates(deliveryAddress);
+      
+      routePoints.push({
+        id: 0,
+        type: 'pickup' as 'pickup',
+        location: startCoords,
+        description: 'Driver Starting Point'
+      });
+      
+      // Add all food pickup locations
+      for (const point of pickupPoints) {
+        const coords = await mapService.getCoordinates(point.location);
+        routePoints.push({
+          id: point.id,
+          type: 'pickup' as 'pickup',
+          location: coords,
+          description: `Pickup: ${point.id}`
+        });
       }
-
-      const deliveryFee = Math.round(totalDistance * 2);  // Round to nearest integer
+      
+      // Add delivery address as final destination
+      routePoints.push({
+        id: 999,
+        type: 'delivery' as 'delivery',
+        location: startCoords,
+        description: 'Customer Delivery Location'
+      });
+      
+      // Use approximateRouteCalculation to match the algorithm used in actual delivery
+      const routeResult = mapService.calculateApproximateRoute(routePoints);
+      totalDistance = routeResult.totalDistance;
+      
+      // Calculate delivery fee based on distance and number of stops
+      const numberOfStops = pickupPoints.length;
+      const distanceFee = Math.round(this.PER_KM_RATE * totalDistance);
+      const stopsFee = numberOfStops * this.ADDITIONAL_STOP_FEE;
+      const deliveryFee = this.BASE_DELIVERY_FEE + distanceFee + stopsFee;
 
       const cartResult = await query(
         `INSERT INTO carts (
@@ -401,7 +430,7 @@ class CartService {
           userId,
           deliveryAddress,
           deliveryFee,
-          deliveryFee
+          deliveryFee // totalAmount is currently the same as deliveryFee
         ]
       );
 

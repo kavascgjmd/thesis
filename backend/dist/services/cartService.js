@@ -19,6 +19,9 @@ class CartService {
     constructor() {
         this.CART_EXPIRY = 24 * 60 * 60; // 24 hours
         this.CART_INACTIVE_THRESHOLD = 12 * 60 * 60; // 12 hours
+        this.BASE_DELIVERY_FEE = 0; // Base fee for delivery
+        this.PER_KM_RATE = 0.5; // Rate per kilometer
+        this.ADDITIONAL_STOP_FEE = 1; // Additional fee per pickup stop
     }
     getCartKey(userId, cartId) {
         return cartId ? `cart:${userId}:${cartId}` : `cart:${userId}:temp`;
@@ -282,7 +285,7 @@ class CartService {
                         throw new Error(`Invalid location: ${location}`);
                     }
                 }
-                // Calculate delivery route and fee
+                // Calculate delivery route and fee using proper routing algorithm
                 const startingPoint = { type: 'start', location: deliveryAddress };
                 const pickupPoints = foodDonationsResult.rows.map(fd => ({
                     type: 'pickup',
@@ -291,20 +294,48 @@ class CartService {
                 }));
                 const finalDelivery = { type: 'delivery', location: deliveryAddress };
                 const points = [startingPoint, ...pickupPoints, finalDelivery];
+                // Calculate optimal route using the proper algorithm from mapService
                 let totalDistance = 0;
+                let optimizedRoute;
                 // If we have precise coordinates, use them, otherwise geocode the address
                 const useProvidedCoordinates = deliveryLatitude !== undefined && deliveryLongitude !== undefined;
-                for (let i = 0; i < points.length - 1; i++) {
-                    const startCoords = i === 0 && useProvidedCoordinates
-                        ? { lat: deliveryLatitude, lng: deliveryLongitude }
-                        : yield mapService_1.default.getCoordinates(points[i].location);
-                    const endCoords = i === points.length - 2 && useProvidedCoordinates
-                        ? { lat: deliveryLatitude, lng: deliveryLongitude }
-                        : yield mapService_1.default.getCoordinates(points[i + 1].location);
-                    const distance = mapService_1.default.calculateDistance(startCoords.lat, startCoords.lng, endCoords.lat, endCoords.lng);
-                    totalDistance += distance;
+                // Prepare points for route calculation
+                const routePoints = [];
+                // Add delivery address as starting point
+                const startCoords = useProvidedCoordinates
+                    ? { lat: deliveryLatitude, lng: deliveryLongitude, address: deliveryAddress }
+                    : yield mapService_1.default.getCoordinates(deliveryAddress);
+                routePoints.push({
+                    id: 0,
+                    type: 'pickup',
+                    location: startCoords,
+                    description: 'Driver Starting Point'
+                });
+                // Add all food pickup locations
+                for (const point of pickupPoints) {
+                    const coords = yield mapService_1.default.getCoordinates(point.location);
+                    routePoints.push({
+                        id: point.id,
+                        type: 'pickup',
+                        location: coords,
+                        description: `Pickup: ${point.id}`
+                    });
                 }
-                const deliveryFee = Math.round(totalDistance * 2); // Round to nearest integer
+                // Add delivery address as final destination
+                routePoints.push({
+                    id: 999,
+                    type: 'delivery',
+                    location: startCoords,
+                    description: 'Customer Delivery Location'
+                });
+                // Use approximateRouteCalculation to match the algorithm used in actual delivery
+                const routeResult = mapService_1.default.calculateApproximateRoute(routePoints);
+                totalDistance = routeResult.totalDistance;
+                // Calculate delivery fee based on distance and number of stops
+                const numberOfStops = pickupPoints.length;
+                const distanceFee = Math.round(this.PER_KM_RATE * totalDistance);
+                const stopsFee = numberOfStops * this.ADDITIONAL_STOP_FEE;
+                const deliveryFee = this.BASE_DELIVERY_FEE + distanceFee + stopsFee;
                 const cartResult = yield (0, util_1.query)(`INSERT INTO carts (
           user_id, 
           status, 
@@ -318,7 +349,7 @@ class CartService {
                     userId,
                     deliveryAddress,
                     deliveryFee,
-                    deliveryFee
+                    deliveryFee // totalAmount is currently the same as deliveryFee
                 ]);
                 const cartId = cartResult.rows[0].id;
                 // Update Redis cart with the database ID

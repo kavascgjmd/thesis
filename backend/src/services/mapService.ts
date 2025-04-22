@@ -106,8 +106,6 @@ class MapService {
       // Add all food pickup locations
       for (let i = 0; i < foodLocationsResult.rows.length; i++) {
         const foodItem = foodLocationsResult.rows[i];
-        console.log('foodLocations');
-        console.log(foodItem.pickup_location);
         const loc = await this.getCoordinates(foodItem.pickup_location);
         points.push({
           id: foodItem.id,
@@ -234,7 +232,7 @@ class MapService {
   }
 
   // Calculate approximate route using nearest neighbor algorithm
-  private calculateApproximateRoute(points: RoutePoint[]): {
+   calculateApproximateRoute(points: RoutePoint[]): {
     path: RoutePoint[];
     totalDistance: number;
     estimatedDuration: number;

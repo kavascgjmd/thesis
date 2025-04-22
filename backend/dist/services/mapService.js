@@ -82,8 +82,6 @@ class MapService {
                 // Add all food pickup locations
                 for (let i = 0; i < foodLocationsResult.rows.length; i++) {
                     const foodItem = foodLocationsResult.rows[i];
-                    console.log('foodLocations');
-                    console.log(foodItem.pickup_location);
                     const loc = yield this.getCoordinates(foodItem.pickup_location);
                     points.push({
                         id: foodItem.id,
