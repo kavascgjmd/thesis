@@ -433,8 +433,6 @@ class OrderService {
         'SELECT id FROM deliveries WHERE request_id = $1',
         [orderId]
       );
-      console.log(driverId);
-      console.log(orderId);
       if (deliveryResult.rows.length) {
         // Update existing delivery
         await query(
@@ -467,6 +465,7 @@ class OrderService {
          WHERE id = $1`,
         [orderId]
       );
+    
     } catch (error) {
       console.error('Failed to assign driver to order:', error);
       throw error;

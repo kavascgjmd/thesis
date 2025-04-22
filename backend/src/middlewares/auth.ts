@@ -17,11 +17,16 @@ export const authMiddleware = async (
   }
  
   try {
+   
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET as string
     ) as UserPayload;
-
+    if (!decoded.role) {
+      res.status(200).json({ message: 'driver' });
+      return;
+    }
+  
     req.user = decoded; 
     next(); 
   } catch (error) {

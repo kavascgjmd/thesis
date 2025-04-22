@@ -88,7 +88,6 @@ class MapService {
          AND ci.created_at >= $2`,
         [cartId, cartCreatedAt]
       );
-      console.log(foodLocationsResult);
       if (!foodLocationsResult.rows.length) {
         throw new Error('No food items found for this order');
       }
@@ -131,7 +130,7 @@ class MapService {
       let totalDistance = 0;
       let estimatedDuration = 0;
       
-      if (points.length <= 25) {
+      if (points.length <= 4) {
         try {
           const result = await this.getDirectionsFromGoogle(points);
           path = result.path;
@@ -384,35 +383,39 @@ class MapService {
   }
 
   // Update driver's current location
-  async updateDriverLocation(driverId: number, lat: number, lng: number): Promise<void> {
-    try {
-      // First, check if there's a record in the last 30 seconds to prevent redundant updates
-      const recentRecordResult = await query(
-        `SELECT id FROM driver_locations 
-         WHERE driver_id = $1 
-         AND timestamp > NOW() - INTERVAL '30 seconds'`,
-        [driverId]
-      );
+async updateDriverLocation(driverId: number, lat: number, lng: number): Promise<void> {
+  try {
+    // Begin transaction
+    await query('BEGIN');
+    
+    // Delete previous location records for this driver
+    await query(
+      'DELETE FROM driver_locations WHERE driver_id = $1',
+      [driverId]
+    );
+    
+    // Insert the new location record
+    await query(
+      `INSERT INTO driver_locations (
+        driver_id,
+        latitude,
+        longitude,
+        timestamp,
+        created_at
+      )
+      VALUES ($1, $2, $3, NOW(), NOW())`,
+      [driverId, lat, lng]
+    );
+    // Commit transaction
+    await query('COMMIT');
 
-      // Only insert if no recent record exists or if position has changed significantly
-      if (recentRecordResult.rows.length === 0) {
-        await query(
-          `INSERT INTO driver_locations (
-            driver_id,
-            latitude,
-            longitude,
-            timestamp,
-            created_at
-          )
-          VALUES ($1, $2, $3, NOW(), NOW())`,
-          [driverId, lat, lng]
-        );
-      }
-    } catch (error) {
-      console.error('Failed to update driver location:', error);
-      throw error;
-    }
+  } catch (error) {
+    // Rollback in case of errors
+    await query('ROLLBACK');
+    console.error('Failed to update driver location:', error);
+    throw error;
   }
+}
 
   // Get driver's current location
   async getDriverLocation(driverId: number): Promise<DriverLocation | null> {

@@ -1,8 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, PhoneCall, Clock, Check, Package, Truck, Flag, AlertCircle } from 'lucide-react';
+import { MapPin, PhoneCall, Clock, Check, Package, Truck, Flag, AlertCircle, Map } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card/Card';
 import axios from 'axios';
+import DeliveryMap from './DriverDeliveryMap'; // Import the new component
+
+// USD to INR conversion rate
+const USD_TO_INR_RATE = 83.5; // Example conversion rate (1 USD = 83.5 INR)
+
+// Helper function to convert USD to INR
+const convertToINR = (amountInUSD) => {
+  const amountInINR = amountInUSD * USD_TO_INR_RATE;
+  return Math.round(amountInINR * 100) / 100; // Round to 2 decimal places
+};
+
+// Format currency to INR format
+const formatINR = (amount) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(amount);
+};
 
 interface DeliveryLocation {
   lat: number;
@@ -39,6 +58,7 @@ const ActiveDeliveryPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<DeliveryLocation | null>(null);
+  const [showMap, setShowMap] = useState(true);
 
   const fetchActiveDelivery = async () => {
     try {
@@ -64,21 +84,38 @@ const ActiveDeliveryPage = () => {
   }, []);
 
   useEffect(() => {
-    // Get current location when order is in transit
-    if (activeOrder?.order_status === 'in_transit') {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setCurrentLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-        }
-      );
-    }
-  }, [activeOrder?.order_status]);
+    // Get current location when component mounts
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCurrentLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+      }
+    );
+    
+    // Set up location watching
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.error('Error watching location:', error);
+      },
+      { enableHighAccuracy: true }
+    );
+    
+    // Clean up
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
 
   const updateDeliveryStatus = async () => {
     if (!activeOrder) return;
@@ -101,8 +138,8 @@ const ActiveDeliveryPage = () => {
         status: nextStatus
       };
 
-      // Include location data if delivery is starting
-      if (nextStatus === 'in_transit' && currentLocation) {
+      // Include location data if we have it
+      if (currentLocation) {
         payload.location = currentLocation;
       }
 
@@ -173,6 +210,10 @@ const ActiveDeliveryPage = () => {
       : { icon: Package, label: 'Unknown Status', next: null };
   };
 
+  // Convert USD amounts to INR for display
+  const totalAmountINR = convertToINR(activeOrder.total_amount);
+  const deliveryFeeINR = convertToINR(activeOrder.delivery_fee);
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">
@@ -188,6 +229,28 @@ const ActiveDeliveryPage = () => {
       )}
 
       <div className="space-y-6">
+        {/* Map Section */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg font-medium">Delivery Route</CardTitle>
+            <button 
+              onClick={() => setShowMap(!showMap)} 
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              {showMap ? 'Hide Map' : 'Show Map'}
+            </button>
+          </CardHeader>
+          <CardContent>
+            {showMap && (
+              <DeliveryMap 
+                orderId={activeOrder.id} 
+                driverLocation={currentLocation} 
+                showFullRoute={true}
+              />
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Delivery Progress</CardTitle>
@@ -252,11 +315,11 @@ const ActiveDeliveryPage = () => {
               <div className="flex items-center space-x-8">
                 <div>
                   <p className="text-sm text-gray-500">Order Total</p>
-                  <p className="font-semibold text-xl">₹{activeOrder.total_amount}</p>
+                  <p className="font-semibold text-xl">{formatINR(totalAmountINR)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Delivery Fee</p>
-                  <p className="font-semibold text-xl">₹{activeOrder.delivery_fee}</p>
+                  <p className="font-semibold text-xl">{formatINR(deliveryFeeINR)}</p>
                 </div>
               </div>
             </div>

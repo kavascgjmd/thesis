@@ -40,7 +40,6 @@ export const driverAuthMiddleware = async (
       id: driverId,
       role: 'driver'
     };
-    
     next(); 
   } catch (error) {
     res.status(403).json({ success: false, message: 'Invalid token' });

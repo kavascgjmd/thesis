@@ -133,7 +133,7 @@ const PaymentConfirmationPage: React.FC = () => {
   const fetchOrderDetails = async (id: number) => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/orders/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/orders/user/${id}`, {
         credentials: 'include'
       });
       
