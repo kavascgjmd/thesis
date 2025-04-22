@@ -48,6 +48,10 @@ const OrderTracking: React.FC<OrderTrackingProps> = ({ orderId, driver }) => {
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [driverLocationTime, setDriverLocationTime] = useState<{
+    istTime: string;
+    relativeTime: string;
+  }>({ istTime: '', relativeTime: '' });
 
   // Fetch initial order details and then poll for updates
   useEffect(() => {
@@ -57,6 +61,30 @@ const OrderTracking: React.FC<OrderTrackingProps> = ({ orderId, driver }) => {
     const intervalId = setInterval(fetchData, 30000);
     return () => clearInterval(intervalId);
   }, [orderId]);
+
+  // Listen for driver time updates from the map component
+  useEffect(() => {
+    const handleDriverTimeUpdate = (event: CustomEvent) => {
+      const { istTime, relativeTime } = event.detail;
+      setDriverLocationTime({ istTime, relativeTime });
+    };
+
+    window.addEventListener('driverTimeUpdate', handleDriverTimeUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('driverTimeUpdate', handleDriverTimeUpdate as EventListener);
+    };
+  }, []);
+
+  // Set initial time format if driver location exists but no event was fired yet
+  useEffect(() => {
+    if (order?.driverLocation?.timestamp && !driverLocationTime.istTime && window.mapTimeUtils) {
+      setDriverLocationTime({
+        istTime: window.mapTimeUtils.getISTTime(order.driverLocation.timestamp),
+        relativeTime: window.mapTimeUtils.getRelativeTime(order.driverLocation.timestamp)
+      });
+    }
+  }, [order?.driverLocation]);
 
   const normalizeOrderData = (backendOrder: any): OrderDetails => {
     return {
@@ -79,7 +107,7 @@ const OrderTracking: React.FC<OrderTrackingProps> = ({ orderId, driver }) => {
     
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+      const response = await fetch(`${API_BASE_URL}/orders/user/${orderId}`, {
         credentials: 'include'
       });
       
@@ -88,6 +116,7 @@ const OrderTracking: React.FC<OrderTrackingProps> = ({ orderId, driver }) => {
       }
       
       const data = await response.json();
+      console.log(data);
       if (data.success) {
         // Normalize the data structure
         const normalizedOrder = normalizeOrderData(data.order);
@@ -197,7 +226,8 @@ const OrderTracking: React.FC<OrderTrackingProps> = ({ orderId, driver }) => {
               <span className="font-medium">Driver's Current Location</span>
             </div>
             <div className="text-sm text-gray-700">
-              Last updated: {new Date(order.driverLocation.timestamp).toLocaleTimeString()}
+              {driverLocationTime.relativeTime || 'Updating...'} 
+              {driverLocationTime.istTime && `(${driverLocationTime.istTime} IST)`}
             </div>
           </div>
         )}

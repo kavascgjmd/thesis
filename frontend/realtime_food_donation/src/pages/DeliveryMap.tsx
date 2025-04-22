@@ -16,6 +16,10 @@ declare global {
         Size: new (width: number, height: number) => any;
       }
     };
+    mapTimeUtils?: {
+      getISTTime: (timestamp: number) => string;
+      getRelativeTime: (timestamp: number) => string;
+    };
   }
 }
 
@@ -137,6 +141,68 @@ const DeliveryMap: React.FC<DeliveryMapProps> = ({
       window.removeEventListener('mapNavigate', handleMapNavigate as EventListener);
     };
   }, []);
+
+  // Function to convert timestamp to IST
+  const getISTTime = (timestamp: number): string => {
+    // Convert to milliseconds if it's in seconds
+    const timestampMs = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    
+    const date = new Date(timestampMs);
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true
+    };
+    return date.toLocaleTimeString('en-IN', options);
+  };
+
+  // Function to get relative time like "updated 1 min ago"
+  const getRelativeTime = (timestamp: number): string => {
+    // Convert to milliseconds if it's in seconds
+    const timestampMs = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    
+    const now = Date.now();
+    const diff = now - timestampMs;
+    
+    // Convert time difference to appropriate units
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (seconds < 60) {
+      return `updated just now`;
+    } else if (minutes < 60) {
+      return `updated ${minutes} ${minutes === 1 ? 'min' : 'mins'} ago`;
+    } else if (hours < 24) {
+      return `updated ${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+    } else {
+      const days = Math.floor(hours / 24);
+      return `updated ${days} ${days === 1 ? 'day' : 'days'} ago`;
+    }
+  };
+
+  // Export the time functions for use outside this component
+  // This allows the parent component to use the same time calculation
+  useEffect(() => {
+    // Export time utility functions to the window object so the parent component can use them
+    window.mapTimeUtils = {
+      getISTTime,
+      getRelativeTime
+    };
+    
+    // Dispatch an event when driver location updates to notify parent components
+    if (driverLocation?.timestamp) {
+      const timeUpdateEvent = new CustomEvent('driverTimeUpdate', {
+        detail: {
+          timestamp: driverLocation.timestamp,
+          istTime: getISTTime(driverLocation.timestamp),
+          relativeTime: getRelativeTime(driverLocation.timestamp)
+        }
+      });
+      window.dispatchEvent(timeUpdateEvent);
+    }
+  }, [driverLocation?.timestamp]);
 
   const initializeMap = () => {
     if (!mapRef.current) return;
@@ -372,10 +438,14 @@ const DeliveryMap: React.FC<DeliveryMapProps> = ({
           zIndex: 1000
         });
         
+        // Get formatted timestamps
+        const istTime = getISTTime(driverLocation.timestamp);
+        const relativeTime = getRelativeTime(driverLocation.timestamp);
+        
         const driverInfoWindow = new google.maps.InfoWindow({
           content: `<div class="font-sans p-2">
                       <div class="font-medium text-blue-800">Driver's Current Location</div>
-                      <div class="text-sm">Last updated: ${new Date(driverLocation.timestamp).toLocaleTimeString()}</div>
+                      <div class="text-sm">${relativeTime} (${istTime} IST)</div>
                     </div>`
         });
         
@@ -438,6 +508,28 @@ const DeliveryMap: React.FC<DeliveryMapProps> = ({
           </div>
         )}
       </div>
+      
+      {/* These hidden fields are only for backward compatibility, but should be replaced
+          with the event-based approach in the parent component */}
+      {driverLocation && (
+        <div className="hidden">
+          <input 
+            type="hidden" 
+            id="driver-timestamp" 
+            value={driverLocation.timestamp} 
+          />
+          <input 
+            type="hidden" 
+            id="driver-ist-time" 
+            value={getISTTime(driverLocation.timestamp)} 
+          />
+          <input 
+            type="hidden" 
+            id="driver-relative-time" 
+            value={getRelativeTime(driverLocation.timestamp)} 
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -67,7 +67,6 @@ class MapService {
          JOIN users u ON d.user_id = u.id
          WHERE ci.cart_id = $1 
          AND ci.created_at >= $2`, [cartId, cartCreatedAt]);
-                console.log(foodLocationsResult);
                 if (!foodLocationsResult.rows.length) {
                     throw new Error('No food items found for this order');
                 }
@@ -83,8 +82,6 @@ class MapService {
                 // Add all food pickup locations
                 for (let i = 0; i < foodLocationsResult.rows.length; i++) {
                     const foodItem = foodLocationsResult.rows[i];
-                    console.log('foodLocations');
-                    console.log(foodItem.pickup_location);
                     const loc = yield this.getCoordinates(foodItem.pickup_location);
                     points.push({
                         id: foodItem.id,
@@ -104,7 +101,7 @@ class MapService {
                 let path = [];
                 let totalDistance = 0;
                 let estimatedDuration = 0;
-                if (points.length <= 25) {
+                if (points.length <= 4) {
                     try {
                         const result = yield this.getDirectionsFromGoogle(points);
                         path = result.path;
@@ -310,23 +307,25 @@ class MapService {
     updateDriverLocation(driverId, lat, lng) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                // First, check if there's a record in the last 30 seconds to prevent redundant updates
-                const recentRecordResult = yield (0, util_1.query)(`SELECT id FROM driver_locations 
-         WHERE driver_id = $1 
-         AND timestamp > NOW() - INTERVAL '30 seconds'`, [driverId]);
-                // Only insert if no recent record exists or if position has changed significantly
-                if (recentRecordResult.rows.length === 0) {
-                    yield (0, util_1.query)(`INSERT INTO driver_locations (
-            driver_id,
-            latitude,
-            longitude,
-            timestamp,
-            created_at
-          )
-          VALUES ($1, $2, $3, NOW(), NOW())`, [driverId, lat, lng]);
-                }
+                // Begin transaction
+                yield (0, util_1.query)('BEGIN');
+                // Delete previous location records for this driver
+                yield (0, util_1.query)('DELETE FROM driver_locations WHERE driver_id = $1', [driverId]);
+                // Insert the new location record
+                yield (0, util_1.query)(`INSERT INTO driver_locations (
+        driver_id,
+        latitude,
+        longitude,
+        timestamp,
+        created_at
+      )
+      VALUES ($1, $2, $3, NOW(), NOW())`, [driverId, lat, lng]);
+                // Commit transaction
+                yield (0, util_1.query)('COMMIT');
             }
             catch (error) {
+                // Rollback in case of errors
+                yield (0, util_1.query)('ROLLBACK');
                 console.error('Failed to update driver location:', error);
                 throw error;
             }

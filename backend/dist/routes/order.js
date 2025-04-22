@@ -18,14 +18,16 @@ const auth_1 = require("../middlewares/auth");
 const driverAuthMiddleware_1 = require("../middlewares/driverAuthMiddleware");
 const orderService_1 = __importDefault(require("../services/orderService"));
 const router = (0, express_1.Router)();
-// Routes that require user authentication
+// Routes that require user authentication only
 router.use('/my-orders', auth_1.authMiddleware);
 router.post('/', auth_1.authMiddleware);
-router.get('/:id', auth_1.authMiddleware);
 // Admin only routes
 router.use(['/admin', '/:id/driver'], auth_1.authMiddleware);
 // Driver routes - using specific driver authentication
 router.use(['/driver', '/:id/status'], driverAuthMiddleware_1.driverAuthMiddleware);
+// Separate user and driver routes for order details
+router.get('/user/:id', auth_1.authMiddleware, getOrderForUser);
+router.get('/driver/:id', driverAuthMiddleware_1.driverAuthMiddleware, getOrderForDriver);
 const createOrderSchema = zod_1.z.object({
     cartId: zod_1.z.number().positive(),
     deliveryAddress: zod_1.z.string().min(5)
@@ -83,7 +85,6 @@ router.get('/driver', (req, res) => __awaiter(void 0, void 0, void 0, function* 
         return res.status(500).json({ success: false, message: 'Failed to fetch driver orders' });
     }
 }));
-// General orders endpoint with status filtering (for drivers)
 // General orders endpoint with status filtering (for drivers)
 router.get('/', driverAuthMiddleware_1.driverAuthMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -146,72 +147,111 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         return res.status(500).json({ success: false, message: 'Failed to create order' });
     }
 }));
-router.get('/:id', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const user = req.user;
-        if (!user || typeof user.id !== 'number' || typeof user.role !== 'string') {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
+// Separate route handler for users
+function getOrderForUser(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const orderId = parseInt(req.params.id);
+            if (isNaN(orderId)) {
+                return res.status(400).json({ success: false, message: 'Invalid order ID' });
+            }
+            const user = req.user;
+            if (!user || typeof user.id !== 'number') {
+                return res.status(401).json({ success: false, message: 'User not authenticated' });
+            }
+            const order = yield orderService_1.default.getOrderById(orderId);
+            // Check if user owns the order or is an admin
+            if (order.userId !== user.id && user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to view this order'
+                });
+            }
+            // Format the response according to the client's expected interface
+            const formattedOrder = formatOrderResponse(order);
+            return res.status(200).json({ success: true, order: formattedOrder });
         }
-        const orderId = parseInt(req.params.id);
-        if (isNaN(orderId)) {
-            return res.status(400).json({ success: false, message: 'Invalid order ID' });
+        catch (error) {
+            console.error('Error fetching order:', error);
+            return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
         }
-        const order = yield orderService_1.default.getOrderById(orderId);
-        // Check permissions - only the order owner or admin can view
-        if (order.userId !== user.id && user.role !== 'admin' && user.role !== 'driver') {
-            return res.status(403).json({ success: false, message: 'You do not have permission to view this order' });
+    });
+}
+// Separate route handler for drivers
+function getOrderForDriver(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const orderId = parseInt(req.params.id);
+            if (isNaN(orderId)) {
+                return res.status(400).json({ success: false, message: 'Invalid order ID' });
+            }
+            const driver = req.driver;
+            if (!driver || typeof driver.id !== 'number') {
+                return res.status(401).json({ success: false, message: 'Driver not authenticated' });
+            }
+            // Check if this order is assigned to this driver
+            const isAssigned = yield orderService_1.default.isOrderAssignedToDriver(orderId, driver.id);
+            if (!isAssigned) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'This order is not assigned to you'
+                });
+            }
+            const order = yield orderService_1.default.getOrderById(orderId);
+            // Format the response according to the client's expected interface
+            const formattedOrder = formatOrderResponse(order);
+            return res.status(200).json({ success: true, order: formattedOrder });
         }
-        // Format the response according to the client's expected interface
-        // Now including the new food donation fields
-        const formattedOrder = {
-            id: order.id,
-            orderStatus: order.orderStatus,
-            paymentStatus: order.paymentStatus,
-            deliveryFee: order.deliveryFee,
-            totalAmount: order.totalAmount,
-            deliveryAddress: order.deliveryAddress,
-            items: order.items.map(item => ({
-                food_type: item.foodType,
-                food_category: item.foodCategory, // New field
-                donor_name: item.donorName,
-                quantity: item.quantity,
-                // Add new fields based on food category
-                servings: item.servings,
-                weightKg: item.weightKg,
-                packageSize: item.packageSize,
-                pickupLocation: item.pickupLocation,
-                expirationTime: item.expirationTime
+        catch (error) {
+            console.error('Error fetching order:', error);
+            return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
+        }
+    });
+}
+// Helper function to format order response consistently
+function formatOrderResponse(order) {
+    return {
+        id: order.id,
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        deliveryFee: order.deliveryFee,
+        totalAmount: order.totalAmount,
+        deliveryAddress: order.deliveryAddress,
+        items: order.items.map((item) => ({
+            food_type: item.foodType,
+            food_category: item.foodCategory,
+            donor_name: item.donorName,
+            quantity: item.quantity,
+            servings: item.servings,
+            weightKg: item.weightKg,
+            packageSize: item.packageSize,
+            pickupLocation: item.pickupLocation,
+            expirationTime: item.expirationTime
+        })),
+        route: order.route ? {
+            path: order.route.path.map((point) => ({
+                lat: point.location.lat,
+                lng: point.location.lng
             })),
-            route: order.route ? {
-                path: order.route.path.map(point => ({
-                    lat: point.location.lat,
-                    lng: point.location.lng
-                })),
-                totalDistance: order.route.totalDistance,
-                estimatedDuration: order.route.estimatedDuration
-            } : undefined,
-            driverLocation: order.driverLocation ? {
-                lat: order.driverLocation.lat,
-                lng: order.driverLocation.lng,
-                timestamp: order.driverLocation.timestamp
-            } : undefined,
-            deliveryStatus: order.deliveryStatus,
-            driver: order.driver ? {
-                id: order.driver.id,
-                name: order.driver.name,
-                phone: order.driver.phone,
-                email: order.driver.email,
-                rating: order.driver.rating,
-                avatar: order.driver.avatar
-            } : undefined
-        };
-        return res.status(200).json({ success: true, order: formattedOrder });
-    }
-    catch (error) {
-        console.error('Error fetching order:', error);
-        return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
-    }
-}));
+            totalDistance: order.route.totalDistance,
+            estimatedDuration: order.route.estimatedDuration
+        } : undefined,
+        driverLocation: order.driverLocation ? {
+            lat: order.driverLocation.lat,
+            lng: order.driverLocation.lng,
+            timestamp: order.driverLocation.timestamp
+        } : undefined,
+        deliveryStatus: order.deliveryStatus,
+        driver: order.driver ? {
+            id: order.driver.id,
+            name: order.driver.name,
+            phone: order.driver.phone,
+            email: order.driver.email,
+            rating: order.driver.rating,
+            avatar: order.driver.avatar
+        } : undefined
+    };
+}
 router.post('/:id/payment', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const user = req.user;
@@ -248,30 +288,6 @@ router.post('/:id/payment', auth_1.authMiddleware, (req, res) => __awaiter(void 
     catch (error) {
         console.error('Error updating payment status:', error);
         return res.status(500).json({ success: false, message: 'Failed to update payment status' });
-    }
-}));
-// Driver specific order view
-router.get('/driver/:id', driverAuthMiddleware_1.driverAuthMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const driver = req.driver;
-        if (!driver || typeof driver.id !== 'number') {
-            return res.status(401).json({ success: false, message: 'Driver not authenticated' });
-        }
-        const orderId = parseInt(req.params.id);
-        if (isNaN(orderId)) {
-            return res.status(400).json({ success: false, message: 'Invalid order ID' });
-        }
-        const order = yield orderService_1.default.getOrderById(orderId);
-        // Check if this order is assigned to this driver
-        const isAssigned = yield orderService_1.default.isOrderAssignedToDriver(orderId, driver.id);
-        if (!isAssigned) {
-            return res.status(403).json({ success: false, message: 'This order is not assigned to you' });
-        }
-        return res.status(200).json({ success: true, order });
-    }
-    catch (error) {
-        console.error('Error fetching driver order:', error);
-        return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
     }
 }));
 router.post('/:id/driver', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -320,7 +336,6 @@ router.post('/:id/status', driverAuthMiddleware_1.driverAuthMiddleware, (req, re
                 console.error('Error auto-assigning driver:', assignError);
                 return res.status(500).json({ success: false, message: 'Failed to accept delivery request' });
             }
-            return res.status(200).json({ success: true, message: 'Order assigned successfully' });
         }
         // For other statuses, verify this driver is assigned to the order
         const isAssigned = yield orderService_1.default.isOrderAssignedToDriver(orderId, driver.id);

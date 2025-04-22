@@ -1,24 +1,25 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authMiddleware } from '../middlewares/auth';
-import { driverAuthMiddleware, DriverPayload } from '../middlewares/driverAuthMiddleware';
+import { driverAuthMiddleware } from '../middlewares/driverAuthMiddleware';
 import orderService from '../services/orderService';
-import mapService from '../services/mapService';
-import { UserPayload } from '../types/custom';
-import { stat } from 'fs';
+import { UserPayload, DriverPayload } from '../types/custom';
 
 const router = Router();
 
-// Routes that require user authentication
+// Routes that require user authentication only
 router.use('/my-orders', authMiddleware);
 router.post('/', authMiddleware);
-router.get('/:id', authMiddleware);
 
 // Admin only routes
 router.use(['/admin', '/:id/driver'], authMiddleware);
 
 // Driver routes - using specific driver authentication
 router.use(['/driver', '/:id/status'], driverAuthMiddleware);
+
+// Separate user and driver routes for order details
+router.get('/user/:id', authMiddleware, getOrderForUser);
+router.get('/driver/:id', driverAuthMiddleware, getOrderForDriver);
 
 const createOrderSchema = z.object({
   cartId: z.number().positive(),
@@ -40,7 +41,6 @@ const updateStatusSchema = z.object({
 const updatePaymentSchema = z.object({
   paymentStatus: z.enum(['pending', 'confirmed', 'paid', 'failed'])
 });
-
 
 // Get all orders with optional status filtering (admin only)
 router.get('/admin', async (req: Request, res: Response): Promise<any> => {
@@ -84,7 +84,6 @@ router.get('/driver', async (req: Request, res: Response): Promise<any> => {
   }
 });
 
-// General orders endpoint with status filtering (for drivers)
 // General orders endpoint with status filtering (for drivers)
 router.get('/', driverAuthMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
@@ -156,76 +155,117 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
   }
 });
 
-router.get('/:id',  async (req: Request, res: Response) : Promise<any>=> {
+// Separate route handler for users
+async function getOrderForUser(req: Request, res: Response): Promise<any> {
   try {
-    const user = req.user as UserPayload;
-    if (!user || typeof user.id !== 'number' || typeof user.role !== 'string') {
-      return res.status(401).json({ success: false, message: 'User not authenticated' });
-    }
-    
     const orderId = parseInt(req.params.id);
     if (isNaN(orderId)) {
       return res.status(400).json({ success: false, message: 'Invalid order ID' });
     }
     
+    const user = req.user as UserPayload;
+    if (!user || typeof user.id !== 'number') {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
     const order = await orderService.getOrderById(orderId);
     
-    // Check permissions - only the order owner or admin can view
-    if (order.userId !== user.id && user.role !== 'admin' && user.role !== 'driver') {
-      return res.status(403).json({ success: false, message: 'You do not have permission to view this order' });
+    // Check if user owns the order or is an admin
+    if (order.userId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'You do not have permission to view this order' 
+      });
     }
 
     // Format the response according to the client's expected interface
-    // Now including the new food donation fields
-    const formattedOrder = {
-      id: order.id,
-      orderStatus: order.orderStatus,
-      paymentStatus: order.paymentStatus,
-      deliveryFee: order.deliveryFee,
-      totalAmount: order.totalAmount,
-      deliveryAddress: order.deliveryAddress,
-      items: order.items.map(item => ({
-        food_type: item.foodType,
-        food_category: item.foodCategory, // New field
-        donor_name: item.donorName,
-        quantity: item.quantity,
-        // Add new fields based on food category
-        servings: item.servings,
-        weightKg: item.weightKg,
-        packageSize: item.packageSize,
-        pickupLocation: item.pickupLocation,
-        expirationTime: item.expirationTime
-      })),
-      route: order.route ? {
-        path: order.route.path.map(point => ({
-          lat: point.location.lat,
-          lng: point.location.lng
-        })),
-        totalDistance: order.route.totalDistance,
-        estimatedDuration: order.route.estimatedDuration
-      } : undefined,
-      driverLocation: order.driverLocation ? {
-        lat: order.driverLocation.lat,
-        lng: order.driverLocation.lng,
-        timestamp: order.driverLocation.timestamp
-      } : undefined,
-      deliveryStatus: order.deliveryStatus,
-      driver: order.driver ? {
-        id: order.driver.id,
-        name: order.driver.name,
-        phone: order.driver.phone,
-        email: order.driver.email,
-        rating: order.driver.rating,
-        avatar: order.driver.avatar
-      } : undefined
-    };
+    const formattedOrder = formatOrderResponse(order);
     
     return res.status(200).json({ success: true, order: formattedOrder });
   } catch (error) {
     console.error('Error fetching order:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
   }
-});
+}
+
+// Separate route handler for drivers
+async function getOrderForDriver(req: Request, res: Response): Promise<any> {
+  try {
+    const orderId = parseInt(req.params.id);
+    if (isNaN(orderId)) {
+      return res.status(400).json({ success: false, message: 'Invalid order ID' });
+    }
+    
+    const driver = req.driver as DriverPayload;
+    if (!driver || typeof driver.id !== 'number') {
+      return res.status(401).json({ success: false, message: 'Driver not authenticated' });
+    }
+    
+    // Check if this order is assigned to this driver
+    const isAssigned = await orderService.isOrderAssignedToDriver(orderId, driver.id);
+    if (!isAssigned) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'This order is not assigned to you' 
+      });
+    }
+    
+    const order = await orderService.getOrderById(orderId);
+    
+    // Format the response according to the client's expected interface
+    const formattedOrder = formatOrderResponse(order);
+    
+    return res.status(200).json({ success: true, order: formattedOrder });
+  } catch (error) {
+    console.error('Error fetching order:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
+  }
+}
+
+// Helper function to format order response consistently
+function formatOrderResponse(order: any) {
+  return {
+    id: order.id,
+    orderStatus: order.orderStatus,
+    paymentStatus: order.paymentStatus,
+    deliveryFee: order.deliveryFee,
+    totalAmount: order.totalAmount,
+    deliveryAddress: order.deliveryAddress,
+    items: order.items.map((item: any) => ({
+      food_type: item.foodType,
+      food_category: item.foodCategory,
+      donor_name: item.donorName,
+      quantity: item.quantity,
+      servings: item.servings,
+      weightKg: item.weightKg,
+      packageSize: item.packageSize,
+      pickupLocation: item.pickupLocation,
+      expirationTime: item.expirationTime
+    })),
+    route: order.route ? {
+      path: order.route.path.map((point: any) => ({
+        lat: point.location.lat,
+        lng: point.location.lng
+      })),
+      totalDistance: order.route.totalDistance,
+      estimatedDuration: order.route.estimatedDuration
+    } : undefined,
+    driverLocation: order.driverLocation ? {
+      lat: order.driverLocation.lat,
+      lng: order.driverLocation.lng,
+      timestamp: order.driverLocation.timestamp
+    } : undefined,
+    deliveryStatus: order.deliveryStatus,
+    driver: order.driver ? {
+      id: order.driver.id,
+      name: order.driver.name,
+      phone: order.driver.phone,
+      email: order.driver.email,
+      rating: order.driver.rating,
+      avatar: order.driver.avatar
+    } : undefined
+  };
+}
 
 router.post('/:id/payment', authMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
@@ -270,34 +310,6 @@ router.post('/:id/payment', authMiddleware, async (req: Request, res: Response):
   }
 });
 
-// Driver specific order view
-router.get('/driver/:id', driverAuthMiddleware, async (req: Request, res: Response): Promise<any> => {
-  try {
-    const driver = req.driver as DriverPayload;
-    if (!driver || typeof driver.id !== 'number') {
-      return res.status(401).json({ success: false, message: 'Driver not authenticated' });
-    }
-
-    const orderId = parseInt(req.params.id);
-    if (isNaN(orderId)) {
-      return res.status(400).json({ success: false, message: 'Invalid order ID' });
-    }
-
-    const order = await orderService.getOrderById(orderId);
-    
-    // Check if this order is assigned to this driver
-    const isAssigned = await orderService.isOrderAssignedToDriver(orderId, driver.id);
-    if (!isAssigned) {
-      return res.status(403).json({ success: false, message: 'This order is not assigned to you' });
-    }
-
-    return res.status(200).json({ success: true, order });
-  } catch (error) {
-    console.error('Error fetching driver order:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
-  }
-});
-
 router.post('/:id/driver', async (req: Request, res: Response): Promise<any> => {
   try {
     const user = req.user as UserPayload;
@@ -331,6 +343,7 @@ router.post('/:id/driver', async (req: Request, res: Response): Promise<any> => 
 router.post('/:id/status', driverAuthMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
     const driver = req.driver as DriverPayload;
+   
     if (!driver || typeof driver.id !== 'number') {
       return res.status(401).json({ success: false, message: 'Driver not authenticated' });
     }
@@ -339,8 +352,9 @@ router.post('/:id/status', driverAuthMiddleware, async (req: Request, res: Respo
     if (isNaN(orderId)) {
       return res.status(400).json({ success: false, message: 'Invalid order ID' });
     }
-
+  
     // If status is 'assigned', automatically assign the driver to this order
+    
     if (req.body.status === 'assigned') {
       try {
         await orderService.assignDriverToOrder(orderId, driver.id);
@@ -348,15 +362,15 @@ router.post('/:id/status', driverAuthMiddleware, async (req: Request, res: Respo
         console.error('Error auto-assigning driver:', assignError);
         return res.status(500).json({ success: false, message: 'Failed to accept delivery request' });
       }
-      return res.status(200).json({ success: true, message: 'Order assigned successfully' });
     }
-
+   
     // For other statuses, verify this driver is assigned to the order
     const isAssigned = await orderService.isOrderAssignedToDriver(orderId, driver.id);
+    
     if (!isAssigned) {
       return res.status(403).json({ success: false, message: 'This order is not assigned to you' });
     }
-
+ 
     const validationResult = updateStatusSchema.safeParse(req.body);
     if (!validationResult.success) {
       return res.status(400).json({ 
@@ -365,13 +379,12 @@ router.post('/:id/status', driverAuthMiddleware, async (req: Request, res: Respo
         errors: validationResult.error.errors 
       });
     }
-
+   
     await orderService.updateDeliveryStatus(
       orderId, 
       validationResult.data.status,
       validationResult.data.location
     );
-    
     // If location is provided, log it to driver history
     if (validationResult.data.location) {
       await orderService.logDriverLocationHistory(

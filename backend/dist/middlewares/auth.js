@@ -25,6 +25,10 @@ const authMiddleware = (req, res, next) => __awaiter(void 0, void 0, void 0, fun
     }
     try {
         const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
+        if (!decoded.role) {
+            res.status(200).json({ message: 'driver' });
+            return;
+        }
         req.user = decoded;
         next();
     }

@@ -288,8 +288,6 @@ class OrderService {
                 }
                 // Check if a delivery entry already exists for this order
                 const deliveryResult = yield (0, util_1.query)('SELECT id FROM deliveries WHERE request_id = $1', [orderId]);
-                console.log(driverId);
-                console.log(orderId);
                 if (deliveryResult.rows.length) {
                     // Update existing delivery
                     yield (0, util_1.query)(`UPDATE deliveries 
