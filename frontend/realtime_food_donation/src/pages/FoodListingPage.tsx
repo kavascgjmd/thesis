@@ -210,7 +210,7 @@ const FoodListingPage: React.FC = () => {
       return 0;
     } else {
       // Predicted quantities for upcoming events
-      return food.total_quantity || 0;
+      return food.servings || 0;
     }
   };
 
@@ -219,7 +219,7 @@ const FoodListingPage: React.FC = () => {
     
     if (!food.event_is_over) {
       // For upcoming events, show predicted quantity
-      return `${quantityLabel}: ${food.total_quantity || 0} kg`;
+      return `${quantityLabel}: ${food.servings || 0} kg`;
     }
     
     // For past events, show actual quantities based on food category
@@ -231,7 +231,7 @@ const FoodListingPage: React.FC = () => {
       case 'Packaged Items':
         return `${quantityLabel}: ${food.quantity} × ${food.package_size}`;
       default:
-        return `${quantityLabel}: ${food.quantity} units`;
+        return `${quantityLabel}: ${food.servings} units`;
     }
   };
 
