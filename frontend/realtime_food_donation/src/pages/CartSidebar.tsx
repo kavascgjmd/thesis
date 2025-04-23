@@ -11,7 +11,7 @@ interface CartItem {
   foodDonationId: number;
   donorId: number;
   quantity?: number; // Now optional
-  servings?: number; // For cooked meals
+  servings?: number; // For cooked meals - also stores predicted weight in kg
   weight_kg?: number; // For raw ingredients
   package_size?: string; // For packaged items
   notes?: string;
@@ -219,8 +219,14 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
     }
   };
 
-  // Helper function to get the appropriate quantity display label based on food category
+  // Helper function to get the appropriate quantity display label based on food category and event status
   const getQuantityLabel = (item: CartItem) => {
+    // For upcoming events, we'll show predicted weight in kg
+    if (!item.isFromPastEvent) {
+      return 'kg (predicted)';
+    }
+    
+    // For past events, show the regular labels
     switch (item.foodCategory) {
       case 'Cooked Meal':
         return 'Servings';
@@ -237,13 +243,27 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
   const renderItemDetails = (item: CartItem) => {
     switch (item.foodCategory) {
       case 'Cooked Meal':
-        return item.servings && <p className="text-xs text-gray-500">Servings: {item.servings}</p>;
+        return item.servings && item.isFromPastEvent && 
+          <p className="text-xs text-gray-500">Servings: {item.servings}</p>;
       case 'Raw Ingredients':
-        return item.weight_kg && <p className="text-xs text-gray-500">Weight: {item.weight_kg} kg</p>;
+        return item.weight_kg && item.isFromPastEvent && 
+          <p className="text-xs text-gray-500">Weight: {item.weight_kg} kg</p>;
       case 'Packaged Items':
-        return item.package_size && <p className="text-xs text-gray-500">Package Size: {item.package_size}</p>;
+        return item.package_size && 
+          <p className="text-xs text-gray-500">Package Size: {item.package_size}</p>;
       default:
         return null;
+    }
+  };
+
+  // Get the displayed quantity value based on whether it's a past or upcoming event
+  const getDisplayedQuantity = (item: CartItem) => {
+    if (!item.isFromPastEvent) {
+      // For upcoming events, show the serving value (which contains the predicted weight in kg)
+      return item.servings || 1;
+    } else {
+      // For past events, show the regular quantity
+      return localQuantities[item.foodDonationId] || 1;
     }
   };
 
@@ -286,7 +306,7 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
             <AlertDescription className={eventType === 'past' ? 'text-blue-600' : 'text-yellow-600'}>
               {eventType === 'past' 
                 ? 'You are ordering from past events. These items are available now for pickup or delivery.'
-                : 'You are ordering from upcoming events. Final quantities will be determined by the donor after the event and will only be delivered once the event is over.'}
+                : 'You are ordering from upcoming events. The predicted weights shown are estimates, and final quantities will be determined after the event.'}
             </AlertDescription>
           </Alert>
         )}
@@ -347,7 +367,7 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                       {/* Additional note for upcoming events */}
                       {!item.isFromPastEvent && (
                         <p className="text-xs text-amber-600 italic mt-1">
-                          *Final quantity determined after event
+                          *Predicted weight shown, final weight determined after event
                         </p>
                       )}
                     </div>
@@ -366,13 +386,14 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                         Math.max(1, (localQuantities[item.foodDonationId] || 1) - 1),
                         item.foodCategory
                       )}
-                      className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                      className={`p-1 rounded-full hover:bg-gray-100 transition-colors ${!item.isFromPastEvent ? 'invisible' : ''}`}
                       aria-label="Decrease quantity"
+                      disabled={!item.isFromPastEvent}
                     >
                       <Minus className="w-4 h-4" />
                     </button>
                     <span className="w-12 text-center">
-                      {localQuantities[item.foodDonationId] || 1}
+                      {getDisplayedQuantity(item)}
                     </span>
                     <button
                       onClick={() => handleQuantityChange(
@@ -380,8 +401,9 @@ const CartSidebar: React.FC<CartProps> = ({ isOpen, onClose, onCartUpdate }) => 
                         (localQuantities[item.foodDonationId] || 1) + 1,
                         item.foodCategory
                       )}
-                      className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                      className={`p-1 rounded-full hover:bg-gray-100 transition-colors ${!item.isFromPastEvent ? 'invisible' : ''}`}
                       aria-label="Increase quantity"
+                      disabled={!item.isFromPastEvent}
                     >
                       <Plus className="w-4 h-4" />
                     </button>

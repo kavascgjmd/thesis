@@ -228,7 +228,7 @@ const FoodDetailPage: React.FC = () => {
       return 0;
     } else {
       // Predicted quantities for upcoming events
-      return food.total_quantity || 0;
+      return food.servings || 0;
     }
   };
 
@@ -237,7 +237,7 @@ const FoodDetailPage: React.FC = () => {
     
     if (!food.event_is_over) {
       // For upcoming events, show predicted quantity
-      return `${quantityLabel}: ${food.total_quantity || 0} units`;
+      return `${quantityLabel}: ${food.servings || 0} kg`;
     }
     
     // For past events, show actual quantities based on food category
