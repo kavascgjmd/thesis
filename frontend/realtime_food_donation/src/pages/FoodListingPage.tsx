@@ -219,7 +219,7 @@ const FoodListingPage: React.FC = () => {
     
     if (!food.event_is_over) {
       // For upcoming events, show predicted quantity
-      return `${quantityLabel}: ${food.total_quantity || 0} units`;
+      return `${quantityLabel}: ${food.total_quantity || 0} kg`;
     }
     
     // For past events, show actual quantities based on food category
