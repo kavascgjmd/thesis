@@ -243,7 +243,7 @@ const FoodDetailPage: React.FC = () => {
     // For past events, show actual quantities based on food category
     switch (food.food_category) {
       case 'Cooked Meal':
-        return `${quantityLabel}: ${food.servings} servings`;
+        return `${quantityLabel}: ${food.servings} kg`;
       case 'Raw Ingredients':
         return `${quantityLabel}: ${food.weight_kg} kg`;
       case 'Packaged Items':

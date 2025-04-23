@@ -12,9 +12,23 @@ import { RadioGroup, RadioGroupItem } from '../components/ui/alert/RadioGroup';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select/Select';
 import { Switch } from '../components/ui/switch/Switch';
 
+// List of predefined food types
+const foodTypeOptions = [
+  { value: "Baked Goods", label: "Baked Goods" },
+  { value: "Dairy Products", label: "Dairy Products" },
+  { value: "Fruits", label: "Fruits" },
+  { value: "Meat", label: "Meat" },
+  { value: "Vegetables", label: "Vegetables" },
+  { value: "South Indian Breakfast", label: "South Indian Breakfast" },
+  { value: "Snack", label: "Snack" },
+  { value: "Rice and Biryani Dishes", label: "Rice and Biryani Dishes" },
+  { value: "Other", label: "Other" },
+];
+
 // Updated schema to handle different food categories and event details
 const foodDonationSchema = z.object({
-  food_type: z.string().min(3, "Food type must be at least 3 characters").max(50, "Food type must be less than 50 characters"),
+  food_type: z.string().min(1, "Food type is required"),
+  custom_food_type: z.string().optional(),
   food_category: z.enum(["Cooked Meal", "Raw Ingredients", "Packaged Items"], {
     required_error: "Please select a food category",
   }),
@@ -42,8 +56,8 @@ const foodDonationSchema = z.object({
     z.number().positive("Total quantity must be positive"),
     z.string().transform(val => val === "" ? undefined : Number(val))
   ]).optional(),
-  event_type: z.enum(["Wedding", "Birthday", "Social_Gathering", "Corporate_Gathering"]).optional(),
-  preparation_method: z.enum(["Buffet", "Sit_down_dinner"]).optional(),
+  event_type: z.enum(["Wedding", "Birthday", "Social Gathering", "Corporate Gathering"]).optional(),
+  preparation_method: z.enum(["Buffet", "Sit-down Dinner"]).optional(),
   pricing: z.enum(["High", "Low", "Moderate"]).optional(),
   number_of_guests: z.union([
     z.number().positive("Number of guests must be positive"),
@@ -65,6 +79,15 @@ const foodDonationSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
 }).superRefine((data, ctx) => {
+  // Check if Other is selected but no custom food type is provided
+  if (data.food_type === "Other" && (!data.custom_food_type || data.custom_food_type.trim() === "")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Please specify the food type",
+      path: ["custom_food_type"]
+    });
+  }
+
   // Conditional validation based on event_is_over flag
   if (data.event_is_over) {
     // Original validation for leftover food
@@ -163,14 +186,14 @@ const dayOptions = [
 const eventTypeOptions = [
   { value: "Wedding", label: "Wedding" },
   { value: "Birthday", label: "Birthday" },
-  { value: "Social_Gathering", label: "Social Gathering" },
-  { value: "Corporate_Gathering", label: "Corporate Gathering" },
+  { value: "Social Gathering", label: "Social Gathering" },
+  { value: "Corporate Gathering", label: "Corporate Gathering" },
 ];
 
 // Preparation method options
 const preparationMethodOptions = [
   { value: "Buffet", label: "Buffet" },
-  { value: "Sit_down_dinner", label: "Sit-down Dinner" },
+  { value: "Sit-down Dinner", label: "Sit-down Dinner" },
 ];
 
 // Pricing options
@@ -214,6 +237,7 @@ const DonorFoodForm = () => {
     resolver: zodResolver(foodDonationSchema),
     defaultValues: {
       food_type: '',
+      custom_food_type: '',
       food_category: undefined,
       event_is_over: true,
       servings: undefined,
@@ -238,6 +262,7 @@ const DonorFoodForm = () => {
   // Watch fields for conditional rendering
   const selectedFoodCategory = watch('food_category');
   const eventIsOver = watch('event_is_over');
+  const selectedFoodType = watch('food_type');
 
   // Watch schedule fields to update availability_schedule
   const startDay = watch('start_day');
@@ -269,13 +294,23 @@ const DonorFoodForm = () => {
     setSuccess(false);
 
     try {
+      // Prepare data for submission
+      // If "Other" is selected, use the custom food type
+      const submissionData = {
+        ...data,
+        food_type: data.food_type === "Other" ? data.custom_food_type : data.food_type
+      };
+      
+      // Remove the custom_food_type field from the submission
+      delete submissionData.custom_food_type;
+
       const response = await fetch('http://localhost:3000/api/foods', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify(data),
+        body: JSON.stringify(submissionData),
       });
 
       const result = await response.json();
@@ -335,18 +370,50 @@ const DonorFoodForm = () => {
             />
           </div>
 
+          {/* Food Type Dropdown */}
           <div className="space-y-2">
             <Label htmlFor="food_type">Food Type</Label>
-            <Input
-              id="food_type"
-              placeholder="e.g., Fresh Vegetables, Prepared Meals"
-              {...register('food_type')}
-              className={errors.food_type ? 'border-red-500' : ''}
+            <Controller
+              name="food_type"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select food type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {foodTypeOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             />
             {errors.food_type && (
               <p className="text-sm text-red-500">{errors.food_type.message}</p>
             )}
           </div>
+
+          {/* Custom Food Type input field (only shown when "Other" is selected) */}
+          {selectedFoodType === "Other" && (
+            <div className="space-y-2">
+              <Label htmlFor="custom_food_type">Specify Food Type</Label>
+              <Input
+                id="custom_food_type"
+                placeholder="e.g., Mixed Cuisine, Desserts"
+                {...register('custom_food_type')}
+                className={errors.custom_food_type ? 'border-red-500' : ''}
+              />
+              {errors.custom_food_type && (
+                <p className="text-sm text-red-500">{errors.custom_food_type.message}</p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-3">
             <Label>Food Category</Label>
