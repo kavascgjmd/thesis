@@ -177,11 +177,7 @@ class CartService {
                         foodCategory: item.foodCategory,
                         donorName: item.donorName,
                         pickupLocation: item.pickupLocation,
-<<<<<<< HEAD
-                        isFromPastEvent: item.isFromPastEvent
-=======
                         isFromPastEvent: item.isFromPastEvent !== undefined ? item.isFromPastEvent : false // Ensure default value
->>>>>>> ammends
                     });
                 }
                 yield redisClient_1.default.set(this.getCartKey(userId, cartId), JSON.stringify(cart), { EX: this.CART_EXPIRY });

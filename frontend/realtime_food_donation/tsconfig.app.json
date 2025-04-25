@@ -6,6 +6,11 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "paths": {
+      "three/examples/*": ["./node_modules/three/examples/*"]
+    },
 
     /* Bundler mode */
     "moduleResolution": "Bundler",

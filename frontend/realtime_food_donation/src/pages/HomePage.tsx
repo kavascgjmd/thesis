@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
-import SearchBar from '../components/SearchBar';
+import ModelContainer from '../components/ModelContainer';
 import Card from '../components/Card';
 import '../styles/Homepage.css';
 import { useAuthStatus } from '../hooks/useAuthStatus';
@@ -9,6 +9,27 @@ import { SignInModal } from './SignInModal';
 import { SignUpModal } from './SignUpModal';
 import { DriverSignInModal } from './DriverSigninModal';
 import { DriverSignUpModal } from './DriverSignUpModal';
+import { preloadAssets } from '../utils/fbxLoader';
+
+// Define asset paths
+const ASSETS = {
+  LOBA_MODEL: '/Loba.fbx',
+  GUITAR_ANIMATION: '/Guitar Playing.fbx',
+  SINGER_MODEL: '/Singer.fbx',
+  SINGING_ANIMATION: '/Singing.fbx',
+  GIBSON_GUITAR: '/Guitar.glb',
+  MARSHALL_AMP: '/Marshal.glb',
+  BRIDE_MODEL: '/Bride.fbx',
+  BRIDE_ANIMATION: '/Bride twist.fbx',
+  GROOM_MODEL: '/Groom.fbx',
+  GROOM_ANIMATION: '/Groom Idle.fbx',
+  GIRL : '/Girl.glb',
+  SPEAKER_2 : '/Speaker2.glb',
+  HALL : '/Hall.glb',
+  ROUNDTABLE : '/Roundtable.glb',
+  RECTANGULARTABLE : '/Rectangulartable.glb',
+  BUFFET: '/Buffet.glb'
+};
 
 const HomePage = () => {
   const { 
@@ -31,6 +52,105 @@ const HomePage = () => {
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [showDriverSignInModal, setShowDriverSignInModal] = useState(false);
   const [showDriverSignUpModal, setShowDriverSignUpModal] = useState(false);
+  const [modelLoaded, setModelLoaded] = useState(false);
+  
+  // Define the 3D models configuration
+  const modelConfigs = [
+    {
+      modelPath: ASSETS.LOBA_MODEL,
+      animationPath: ASSETS.GUITAR_ANIMATION,
+      position: [-3.05, -2.1, -5.2] as [number, number, number],
+      rotation: [0, Math.PI / 8, 0] as [number, number, number],
+      scale: 0.05,
+      guitarModelPath: ASSETS.GIBSON_GUITAR // Include the GLB guitar
+    },
+    {
+      modelPath: ASSETS.SINGER_MODEL,
+      animationPath: ASSETS.SINGING_ANIMATION,
+      position: [-1.5, -1.4, -5] as [number, number, number],
+      rotation: [0, -Math.PI / 8, 0] as [number, number, number],
+      scale: 0.125
+    },
+    // Add the Marshall amp as a static model (no animation)
+    {
+      staticModelPath: ASSETS.MARSHALL_AMP,
+      position: [-1.5, -1.4, -4] as [number, number, number], // Position in front of Loba
+      rotation: [0, Math.PI / 4, 0] as [number, number, number], // Slightly angled toward the singer
+      scale: 2, // Adjust as needed for the amp size
+      isStatic: true // Flag to indicate this is a static model with no animation
+    },
+   
+  
+    // Add Groom model to the right of the Bride, facing left (toward Bride)
+    {
+      modelPath: ASSETS.GROOM_MODEL,
+      animationPath: ASSETS.GROOM_ANIMATION,
+      position: [0.8, -1.25, -2] as [number, number, number],
+      rotation: [0, -Math.PI * 1.8/ 4, 0] as [number, number, number], // Facing left
+      scale: 0.1
+    },
+    
+    {
+      staticModelPath: ASSETS.SPEAKER_2,
+      position: [7, -1.5, -8] as [number, number, number], // Position behind the bride
+      rotation: [0, Math.PI / 4, 0] as [number, number, number], // Similar rotation to the bride
+      scale: 0.005, // Adjust scale as needed
+      isStatic: true // Flag to indicate this is a static model
+    },
+    {
+      staticModelPath: ASSETS.GIRL,
+      position: [0.2, -1.25, -2] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number], // Facing right
+      scale: 1,
+      isStatic: true // Flag to indicate this is a static model with no animation
+    },
+    {
+      staticModelPath: ASSETS.HALL,
+      position: [-4, 4, 6] as [number, number, number], // Position behind the bride
+      rotation: [0, Math.PI/2, 0] as [number, number, number], // Similar rotation to the bride
+      scale: 0.5, // Adjust scale as needed
+      isStatic: true // Flag to indicate this is a static model
+    },
+    {
+      staticModelPath: ASSETS.ROUNDTABLE,
+      position: [-0.7, -1, 7] as [number, number, number], // Position behind the bride
+      rotation: [0,0, 0] as [number, number, number], // Similar rotation to the bride
+      scale: 0.75, // Adjust scale as needed
+      isStatic: true // Flag to indicate this is a static model
+    },
+ 
+    {
+      staticModelPath: ASSETS.RECTANGULARTABLE,
+      position: [2.5, -2, 6] as [number, number, number], // Position behind the bride
+      rotation: [0, 0, 0] as [number, number, number], // Similar rotation to the bride
+      scale: 0.25, // Adjust scale as needed
+      isStatic: true // Flag to indicate this is a static model
+    },
+    {
+      staticModelPath: ASSETS.BUFFET,
+      position: [1.5, -1, 7.35] as [number, number, number], // Position behind the bride
+      rotation: [0, Math.PI/2, 0] as [number, number, number], // Similar rotation to the bride
+      scale: 0.25, // Adjust scale as needed
+      isStatic: true // Flag to indicate this is a static model
+    },
+  
+   
+  ];
+  
+  // Preload 3D assets
+  useEffect(() => {
+    // Start preloading all assets
+    const assetsToPreload = Object.values(ASSETS);
+    preloadAssets(assetsToPreload);
+    
+    // Set a timeout to indicate loading is complete
+    // This is optional but gives a nicer UX
+    const timer = setTimeout(() => {
+      setModelLoaded(true);
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, []);
   
   const handleAuthModalClose = () => {
     setShowSignUpModal(false);
@@ -80,16 +200,21 @@ const HomePage = () => {
         />
       )}
 
-      <header className="hero-section">
-        <div className="overlay">
-          <h1 className="hero-title">Donate Food, Tatakae</h1>
-          <div className="location-input">
-            <img src="/" alt="Location Icon" />
-            <input type="text" placeholder="Patna" />
-            <SearchBar />
+      {/* Full-screen 3D Model Section */}
+      <section className="fullscreen-model-section">
+        {modelLoaded ? (
+          <ModelContainer 
+            models={modelConfigs}
+            height="90vh"
+            className="fullscreen-model-viewer"
+          />
+        ) : (
+          <div className="fullscreen-loading">
+            <div className="loading-spinner"></div>
+            <p>Loading 3D Experience...</p>
           </div>
-        </div>
-      </header>
+        )}
+      </section>
 
       <section className="cards-section">
         <Card
@@ -111,7 +236,7 @@ const HomePage = () => {
       
       {/* Driver login section with both login and signup options */}
       <div className="driver-login-container mt-8 text-center pb-8">
-        <p className="text-gray-600 mb-3">Are you a delivery partner?</p>
+        <p className="text-gray-300 mb-3">Are you a delivery partner?</p>
         {isDriverLoading ? (
           <div className="flex justify-center">
             <p>Loading...</p>
@@ -129,7 +254,7 @@ const HomePage = () => {
           <div className="flex justify-center space-x-4">
             <button 
               onClick={() => setShowDriverSignInModal(true)}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded transition-colors"
+              className="bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium py-2 px-4 rounded transition-colors"
             >
               Login as Driver
             </button>

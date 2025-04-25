@@ -25,15 +25,11 @@ const cartItemSchema = zod_1.z.object({
     notes: zod_1.z.string().optional(),
     itemTotal: zod_1.z.number(), // itemTotal is required now
     status: zod_1.z.string().default('ACTIVE'), // status field included
-<<<<<<< HEAD
-    isFromPastEvent: zod_1.z.boolean().optional() // Added isFromPastEvent flag
-=======
     foodType: zod_1.z.string().optional(),
     foodCategory: zod_1.z.string().optional(),
     donorName: zod_1.z.string().optional(),
     pickupLocation: zod_1.z.string().optional(),
     isFromPastEvent: zod_1.z.boolean().default(false) // Default value added
->>>>>>> ammends
 });
 const deliveryAddressSchema = zod_1.z.object({
     deliveryAddress: zod_1.z.string().min(5),

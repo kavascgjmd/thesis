@@ -2,88 +2,101 @@
 body {
     margin: 0;
     font-family: Arial, sans-serif;
-}
-
-.hero-section {
-    position: relative;
-    background-image: url('/Food_app_front.jpg'); /* Replace with actual path */
-    background-size: cover;
-    background-position: center;
-    height: 450px;
+    background-color: #000000;
     color: #ffffff;
-}
-
-.overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4); /* Adds slight overlay for text clarity */
+  }
+  
+  .homepage {
+    background-color: #000000;
+    min-height: 100vh;
+  }
+  
+  /* Fullscreen 3D Model Section - replaces hero section */
+  .fullscreen-model-section {
+    width: 100%;
+    height: 90vh;
+    background-color: #000000;
+    position: relative;
+  }
+  
+  .fullscreen-model-viewer {
+    width: 100%;
+    border-radius: 0;
+    overflow: hidden;
+    background-color: #000000;
+  }
+  
+  /* Model loading indicator */
+  .fullscreen-loading {
+    height: 90vh;
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    text-align: center;
-}
-
-.hero-title {
-    font-size: 2.8rem;
-    font-weight: bold;
-    margin-bottom: 20px;
-}
-
-.location-input {
-    display: flex;
-    align-items: center;
-    background: #ffffff;
-    padding: 8px 15px;
-    border-radius: 5px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.location-input input {
-    border: none;
-    outline: none;
-    margin-left: 10px;
-    font-size: 1rem;
-    color: #333;
-}
-
-.cards-section {
+    background-color: #000000;
+    color: white;
+  }
+  
+  .loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #ff4040;
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 15px;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  /* Cards Section */
+  .cards-section {
     display: flex;
     justify-content: space-around;
     padding: 40px 20px;
     gap: 20px;
-}
-
-.card {
-    background: #ffffff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    background-color: #000000;
+  }
+  
+  .card {
+    background: #1a1a1a;
+    box-shadow: 0 2px 4px rgba(255, 255, 255, 0.1);
     border-radius: 10px;
     text-align: center;
     width: 300px;
     padding: 20px;
     transition: transform 0.3s ease;
-}
-
-.card:hover {
+    color: #ffffff;
+  }
+  
+  .card:hover {
     transform: translateY(-5px);
-}
-
-.card img {
+  }
+  
+  .card img {
     width: 100%;
     border-radius: 10px;
     margin-bottom: 15px;
-}
-
-.card-title {
+  }
+  
+  .card-title {
     font-size: 1.2rem;
     font-weight: bold;
     margin-bottom: 10px;
-}
-
-.card-description {
-    color: #666;
+    color: #ffffff;
+  }
+  
+  .card-description {
+    color: #cccccc;
     font-size: 0.95rem;
-}
+  }
+  
+  /* Driver login container */
+  .driver-login-container {
+    padding: 20px;
+    background-color: #000000;
+    border-top: 1px solid #333333;
+  }
