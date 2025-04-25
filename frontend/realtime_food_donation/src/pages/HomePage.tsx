@@ -28,7 +28,19 @@ const ASSETS = {
   HALL : '/Hall.glb',
   ROUNDTABLE : '/Roundtable.glb',
   RECTANGULARTABLE : '/Rectangulartable.glb',
-  BUFFET: '/Buffet.glb'
+  BUFFET: '/Buffet.glb',
+  SOPHIE_MODEL: '/Sophie.fbx',
+  HIP_HOP_ANIMATION: '/Hip Hop Dancing.fbx',
+  CH13 : '/Ch13.fbx',
+  CH13_ANIMATION: '/Ch13dance.fbx',
+  CH31 : '/Ch31.fbx',
+  CH31_ANIMATION: '/Ch31dance.fbx',
+  CH22 : '/Ch22.fbx',
+  CH22_ANIMATION: '/Ch22dance.fbx',  
+  BOSS : '/Boss.fbx',
+  BOSS_ANIMATION: '/Bossdance.fbx',  
+  BOSS_ANIMATION_2: '/Bossdance2.fbx',  
+  SOPHIE_ANIMATION_2: '/Sophiedance2.fbx',
 };
 
 const HomePage = () => {
@@ -80,7 +92,6 @@ const HomePage = () => {
       isStatic: true // Flag to indicate this is a static model with no animation
     },
    
-  
     // Add Groom model to the right of the Bride, facing left (toward Bride)
     {
       modelPath: ASSETS.GROOM_MODEL,
@@ -113,7 +124,7 @@ const HomePage = () => {
     },
     {
       staticModelPath: ASSETS.ROUNDTABLE,
-      position: [-0.7, -1, 7] as [number, number, number], // Position behind the bride
+      position: [-0.7, -1, 4] as [number, number, number], // Position behind the bride
       rotation: [0,0, 0] as [number, number, number], // Similar rotation to the bride
       scale: 0.75, // Adjust scale as needed
       isStatic: true // Flag to indicate this is a static model
@@ -121,20 +132,59 @@ const HomePage = () => {
  
     {
       staticModelPath: ASSETS.RECTANGULARTABLE,
-      position: [2.5, -2, 6] as [number, number, number], // Position behind the bride
+      position: [3.5, -2, 4] as [number, number, number], // Position behind the bride
       rotation: [0, 0, 0] as [number, number, number], // Similar rotation to the bride
       scale: 0.25, // Adjust scale as needed
       isStatic: true // Flag to indicate this is a static model
     },
     {
       staticModelPath: ASSETS.BUFFET,
-      position: [1.5, -1, 7.35] as [number, number, number], // Position behind the bride
+      position: [3, -1, 4.35] as [number, number, number], // Position behind the bride
       rotation: [0, Math.PI/2, 0] as [number, number, number], // Similar rotation to the bride
       scale: 0.25, // Adjust scale as needed
       isStatic: true // Flag to indicate this is a static model
     },
-  
-   
+
+    {
+      modelPath: ASSETS.SOPHIE_MODEL,
+      animationPath: ASSETS.HIP_HOP_ANIMATION,
+      alternateAnimationPath: ASSETS.SOPHIE_ANIMATION_2, // Add alternate animation for hover
+      position: [0.5, -1.4, 5], // Positioned to the right side of the scene
+      rotation: [0, -Math.PI, 0], // Slightly angled to face center
+      scale: 0.1, // You might need to adjust this based on the model's actual size
+      modelName: "Sophie" // Optional: add model name for debugging
+    },
+
+    {
+      modelPath: ASSETS.CH13,
+      animationPath: ASSETS.CH13_ANIMATION,
+      position: [1.5, -1.4, 1], // Positioned to the right side of the scene
+      rotation: [0, -1.2*Math.PI, 0], // Slightly angled to face center
+      scale: 0.1 // You might need to adjust this based on the model's actual size
+    },
+    {
+      modelPath: ASSETS.CH31,
+      animationPath: ASSETS.CH31_ANIMATION,
+      position: [2.4, -1.4, 1.2], // Positioned to the right side of the scene
+      rotation: [0, -Math.PI, 0], // Slightly angled to face center
+      scale: 0.1 // You might need to adjust this based on the model's actual size
+    },
+    {
+      modelPath: ASSETS.CH22,
+      animationPath: ASSETS.CH22_ANIMATION,
+      position: [3.0, -1.4, 0.6], // Positioned to the right side of the scene
+      rotation: [0, -Math.PI*3/4, 0], // Slightly angled to face center
+      scale: 0.1 // You might need to adjust this based on the model's actual size
+    },
+    {
+      modelPath: ASSETS.BOSS,
+      animationPath: ASSETS.BOSS_ANIMATION,
+      alternateAnimationPath: ASSETS.BOSS_ANIMATION_2, // Add alternate animation for hover
+      position: [-2.0, -1.4, 2.2], // Positioned to the right side of the scene
+      rotation: [0, -1.2*Math.PI, 0], // Slightly angled to face center
+      scale: 0.1, 
+      modelName: "Boss" 
+    },
   ];
   
   // Preload 3D assets
@@ -201,17 +251,25 @@ const HomePage = () => {
       )}
 
       {/* Full-screen 3D Model Section */}
-      <section className="fullscreen-model-section">
+      <section className="fullscreen-model-section" style={{ backgroundColor: '#000', paddingTop: '20px', paddingBottom: '20px' }}>
         {modelLoaded ? (
           <ModelContainer 
             models={modelConfigs}
             height="90vh"
             className="fullscreen-model-viewer"
+            backgroundColor="#161616" // Slightly darker background
           />
         ) : (
-          <div className="fullscreen-loading">
+          <div className="fullscreen-loading" style={{ 
+            height: '90vh', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            justifyContent: 'center', 
+            alignItems: 'center',
+            backgroundColor: '#000'
+          }}>
             <div className="loading-spinner"></div>
-            <p>Loading 3D Experience...</p>
+            <p style={{ color: '#fff', marginTop: '20px' }}>Loading 3D Experience...</p>
           </div>
         )}
       </section>

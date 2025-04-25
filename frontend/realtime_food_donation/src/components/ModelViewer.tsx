@@ -7,33 +7,43 @@ import { loadFbxModel, loadFbxAnimation, loadGltfModel } from '../utils/fbxLoade
 interface ModelViewerProps {
   modelPath: string;
   animationPath: string;
+  alternateAnimationPath?: string; // Add alternate animation path
   scale?: number;
   position?: [number, number, number];
   rotation?: [number, number, number];
   guitarModelPath?: string;
   debugMode?: boolean;
+  modelName?: string; // Add model name for identification
 }
 
 const ModelViewer = ({
   modelPath,
   animationPath,
+  alternateAnimationPath,
   scale = 0.01,
   position = [0, -1, 0],
   rotation = [0, 0, 0],
   guitarModelPath,
-  debugMode = false
+  debugMode = false,
+  modelName = ""
 }: ModelViewerProps) => {
   const group = useRef<THREE.Group>(null);
   const [model, setModel] = useState<THREE.Group | null>(null);
   const [guitarModel, setGuitarModel] = useState<THREE.Group | null>(null);
   const [mixer, setMixer] = useState<THREE.AnimationMixer | null>(null);
   const [animations, setAnimations] = useState<THREE.AnimationClip[]>([]);
+  const [alternateAnimations, setAlternateAnimations] = useState<THREE.AnimationClip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modelScale, setModelScale] = useState(scale);
+  const [isHovered, setIsHovered] = useState(false);
   
-  // Animation action reference for cleanup
-  const actionRef = useRef<THREE.AnimationAction | null>(null);
+  // Animation action references for cleanup
+  const primaryActionRef = useRef<THREE.AnimationAction | null>(null);
+  const alternateActionRef = useRef<THREE.AnimationAction | null>(null);
+  
+  // Flag to track if alternate animation is loaded
+  const hasAlternateAnimation = useRef(false);
 
   // Keep track of the bone we want to attach the guitar to
   const handBoneRef = useRef<THREE.Object3D | null>(null);
@@ -131,14 +141,31 @@ const ModelViewer = ({
         const newMixer = new THREE.AnimationMixer(loadedModel);
         console.log("Created animation mixer");
         
-        // Now load the animation
-        console.log(`Loading animation from: ${animationPath}`);
+        // Now load the primary animation
+        console.log(`Loading primary animation from: ${animationPath}`);
         const animationClips = await loadFbxAnimation(animationPath, false); // Disable cache
         
         if (!isMounted) return;
-        
-        console.log(`Loaded ${animationClips.length} animations:`, 
+        console.log(`Loaded ${animationClips.length} primary animations:`, 
           animationClips.map(clip => clip.name));
+        
+        // Load alternate animation if provided
+        let alternateClips: THREE.AnimationClip[] = [];
+        
+        if (alternateAnimationPath) {
+          console.log(`Loading alternate animation from: ${alternateAnimationPath}`);
+          alternateClips = await loadFbxAnimation(alternateAnimationPath, false);
+          
+          if (!isMounted) return;
+          console.log(`Loaded ${alternateClips.length} alternate animations:`, 
+            alternateClips.map(clip => clip.name));
+            
+          setAlternateAnimations(alternateClips);
+          
+          if (alternateClips.length > 0) {
+            hasAlternateAnimation.current = true;
+          }
+        }
         
         if (animationClips.length > 0) {
           // Animation loaded successfully
@@ -146,16 +173,30 @@ const ModelViewer = ({
           setMixer(newMixer);
           setAnimations(animationClips);
           
-          // Immediately start animation
-          const action = newMixer.clipAction(animationClips[0]);
-          action.reset();
-          action.setLoop(THREE.LoopRepeat, Infinity);
-          action.timeScale = 1.0;
-          action.clampWhenFinished = true;
-          action.play();
-          actionRef.current = action;
+          // Immediately start primary animation
+          const primaryAction = newMixer.clipAction(animationClips[0]);
+          primaryAction.reset();
+          primaryAction.setLoop(THREE.LoopRepeat, Infinity);
+          primaryAction.timeScale = 1.0;
+          primaryAction.clampWhenFinished = true;
+          primaryAction.play();
+          primaryActionRef.current = primaryAction;
           
-          console.log(`Playing animation: ${animationClips[0].name}`);
+          console.log(`Playing primary animation: ${animationClips[0].name}`);
+          
+          // Also prepare the alternate animation if available
+          if (alternateClips.length > 0) {
+            const alternateAction = newMixer.clipAction(alternateClips[0]);
+            alternateAction.reset();
+            alternateAction.setLoop(THREE.LoopRepeat, Infinity);
+            alternateAction.timeScale = 1.0;
+            alternateAction.clampWhenFinished = true;
+            alternateAction.weight = 0; // Start with weight 0 (not visible)
+            alternateAction.play();     // Still play it to keep it ready
+            alternateActionRef.current = alternateAction;
+            
+            console.log(`Prepared alternate animation: ${alternateClips[0].name}`);
+          }
         } else {
           console.warn('No animations found in the FBX file');
           setModel(loadedModel); // Still show the model even without animation
@@ -242,15 +283,18 @@ const ModelViewer = ({
     return () => {
       isMounted = false;
       // Clean up resources
-      if (actionRef.current) {
-        actionRef.current.stop();
+      if (primaryActionRef.current) {
+        primaryActionRef.current.stop();
+      }
+      if (alternateActionRef.current) {
+        alternateActionRef.current.stop();
       }
       if (mixer) {
         mixer.stopAllAction();
         mixer.uncacheRoot(mixer.getRoot());
       }
     };
-  }, [modelPath, animationPath, guitarModelPath]);
+  }, [modelPath, animationPath, alternateAnimationPath, guitarModelPath]);
 
   // Create keyboard controls for guitar debugging
   useEffect(() => {
@@ -286,6 +330,31 @@ const ModelViewer = ({
     }
   }, [guitarModel, guitarAttached]);
 
+  // Handle hover state for animation switching
+  useEffect(() => {
+    if (!mixer || !primaryActionRef.current) return;
+    if (!hasAlternateAnimation.current || !alternateActionRef.current) return;
+    
+    // Smoothly transition between animations
+    const transitionDuration = 0.5; // in seconds
+    
+    if (isHovered) {
+      // Transition to alternate animation
+      primaryActionRef.current.fadeOut(transitionDuration);
+      alternateActionRef.current.reset();
+      alternateActionRef.current.setEffectiveWeight(1);
+      alternateActionRef.current.fadeIn(transitionDuration);
+      alternateActionRef.current.play();
+    } else {
+      // Transition back to primary animation
+      alternateActionRef.current.fadeOut(transitionDuration);
+      primaryActionRef.current.reset();
+      primaryActionRef.current.setEffectiveWeight(1);
+      primaryActionRef.current.fadeIn(transitionDuration);
+      primaryActionRef.current.play();
+    }
+  }, [isHovered, mixer]);
+
   // Update animation mixer on each frame
   useFrame((state, delta) => {
     if (mixer) {
@@ -295,7 +364,7 @@ const ModelViewer = ({
     // Update guitar scale and visibility if attached
     if (guitarModel) {
       // Apply current scale - note we're applying this directly to the guitar model
-      guitarModel.scale.set(guitarScale , guitarScale , guitarScale);
+      guitarModel.scale.set(guitarScale, guitarScale, guitarScale);
       
       // Set visibility
       guitarModel.visible = guitarVisible;
@@ -315,12 +384,17 @@ const ModelViewer = ({
     );
   }
 
+  // Determine if this model should have hover functionality
+  const hasHoverAnimation = Boolean(alternateAnimationPath && hasAlternateAnimation.current);
+
   return (
     <group 
       ref={group} 
       position={position} 
       rotation={[rotation[0], rotation[1], rotation[2]]} 
       scale={modelScale}
+      onPointerOver={() => hasHoverAnimation && setIsHovered(true)}
+      onPointerOut={() => hasHoverAnimation && setIsHovered(false)}
     >
       {model && <primitive object={model} />}
       
@@ -345,11 +419,14 @@ const ModelViewer = ({
             <p>Guitar Scale: {guitarScale.toFixed(2)}</p>
             <p>Guitar Visible: {guitarVisible ? 'Yes' : 'No'}</p>
             <p>Guitar Attached: {guitarAttached ? 'Yes' : 'No'}</p>
+            <p>Hover State: {isHovered ? 'Hovered' : 'Normal'}</p>
+            <p>Model Name: {modelName}</p>
+            <p>Alternate Animation: {hasAlternateAnimation.current ? 'Available' : 'Not Available'}</p>
             <p>Controls:</p>
             <ul style={{ margin: '5px 0', paddingLeft: '15px' }}>
               <li>+/- : Scale guitar</li>
               <li>G: Toggle visibility</li>
-              <li>Ctrl+D: Toggle debug mode</li>
+              <li>Hover: Change animation (if available)</li>
             </ul>
           </div>
         </Html>
