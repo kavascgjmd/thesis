@@ -1,0 +1,5 @@
+timestamp,type_of_food,number_of_guests,event_type,quantity_of_food,serving_method,geographical_location,pricing,wastage_food_amount,actual_location,name_of_food,model_id
+2025-04-24 17:46:03,Indian Dinner and Bread,1000,Social Gathering,1350.0,Sit-down Dinner,Suburban,Low,208.85715318561577,,kulcha,1
+2025-04-24 17:50:20,Indian Dinner and Bread,1000,Social Gathering,1350.0,Sit-down Dinner,Suburban,Low,208.85715318561577,,kulcha,1
+2025-04-24 17:50:44,Indian Dinner and Bread,1000,Social Gathering,1350.0,Sit-down Dinner,Suburban,Low,208.85715318561577,,kulcha,1
+2025-04-25 09:51:02,Fruits,315,Birthday,350.0,Buffet,Rural,High,33.508789951139576,,Meat,0

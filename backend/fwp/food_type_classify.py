@@ -1,5 +1,5 @@
 from sentence_transformers import SentenceTransformer, util
-food_types = ["Baked Goods", "Meat", "Diary Products", "Vegetables", "Fruits"]
+food_types = ["Baked Goods", "Meat", "Dairy Products", "Vegetables", "Fruits"]
 def food_type_classify(food_type):
 
 
@@ -87,8 +87,8 @@ def food_type_classify(food_type):
     # Display the top 5 matches
     print("Top 5 matches for the food item:", new_food_item)
     for category, score in top_matches:
-        if category in food_types:
-            print(f"Category: {category} | Similarity Score: {score:.4f}")
-            return category
+        # if category in food_types:
+        print(f"Category: {category} | Similarity Score: {score:.4f}")
+            # return category
 
-    return None
+    return top_matches[0][0]

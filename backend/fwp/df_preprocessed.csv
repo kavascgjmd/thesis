@@ -1,4 +1,4 @@
-type_of_food,number_of_guests,event_type,quantity_of_food,preparation_method,geographical_location,pricing,wastage_food_amount
+type_of_food,number_of_guests,event_type,quantity_of_food,serving_method,geographical_location,pricing,wastage_food_amount
 Meat,310,Corporate Gathering,450,Buffet,Urban,Low,25
 Meat,400,Birthday,500,Buffet,Suburban,High,40
 Vegetables,302,Birthday,371,Buffet,Suburban,Low,27
