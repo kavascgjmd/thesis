@@ -1,102 +1,294 @@
-/* General styling for the homepage */
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background-color: #000000;
-    color: #ffffff;
+/* Add this to your Homepage.css file */
+
+/* Full screen model section with multi-colored background */
+.fullscreen-model-section {
+  position: relative;
+  height: 335vh; /* Increased height as requested */
+  overflow: visible;
+  padding-top: 20px;
+  padding-bottom: 20px;
+  
+  /* Fixed background gradient with precise transitions */
+  background-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 150vh,
+    #1a1a2e 150vh, /* Navy blue starts exactly at 150vh */
+    #1a1a2e 220vh, /* Navy blue ends exactly at 220vh */
+    #000 220vh,
+    #000 335vh /* Extended to match new height */
+  );
+}
+
+
+
+
+/* Split canvas container - positioned absolutely */
+.split-canvas-container {
+  position: absolute;
+  top: 250vh; /* Position starts at 250vh as requested */
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0;
+  z-index: 1;
+}
+
+/* The actual split canvas without border */
+.split-canvas {
+  width: 80%;
+  height: 60vh;
+  display: flex; 
+  overflow: hidden;
+  border: none;
+  box-shadow: none;
+}
+
+/* Left side of split canvas */
+.split-canvas-left {
+  width: 50%;
+  height: 100%;
+  background-color: #161616;
+  position: relative;
+  overflow: hidden;
+  border: none;
+}
+
+/* Right side of split canvas */
+.split-canvas-right {
+  width: 50%;
+  height: 100%;
+  background-color: #000;
+  position: relative;
+  overflow: hidden;
+  border: none;
+}
+
+/* Model container styling */
+.truck-model-container,
+.food-model-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+canvas {
+  border: none !important;
+  outline: none !important;
+}
+
+/* Top text positioning */
+.model-text-top {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-weight: bold;
+  font-size: 2rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+  z-index: 10;
+}
+
+/* Bottom text positioning */
+.model-text-bottom {
+  position: absolute;
+  bottom: 30px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-weight: bold;
+  font-size: 2rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+  z-index: 10;
+}
+
+/* Driver login container inside split canvas */
+.split-canvas-left .driver-login-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 15px;
+  margin: 0;
+}
+
+.model-container {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Updated History section styling to match reference */
+.history-section-content {
+  position: absolute;
+  top: 150vh; /* Positioned exactly at the start of the navy blue section */
+  left: 0;
+  width: 100%;
+  height: 70vh; /* Height matches the navy blue section (220vh - 150vh) */
+  color: white;
+  z-index: 0;
+  background-color: transparent; /* Make background transparent to let gradient show through */
+  border: none; /* Remove border that might be affecting appearance */
+}
+
+.history-section-inner {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  height: 70vh;
+  margin: 0;
+  padding: 0;
+  background-color: transparent; /* Ensure inner container is also transparent */
+}
+
+/* The heading with the large History text */
+.history-heading {
+  width: 35%; /* Match the width of text content */
+  margin: 0;
+  padding: 20px 0 0 40px; /* Keep left padding consistent */
+}
+
+.history-heading h2 {
+  font-size: 12rem;
+  font-weight: 700;
+  color: #fff; /* White text */
+  margin: 0;
+  line-height: 0.8;
+  font-family: sans-serif;
+  letter-spacing: -5px;
+}
+
+/* Text content styling */
+.history-content-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.history-text-content {
+  width: 35%; /* Same width as heading for alignment */
+  padding: 50px 0 30px 50px; /* Maintain left padding */
+  font-size: 1rem;
+  line-height: 1.2;
+  position: relative;
+  z-index: 2;
+}
+
+.history-text-content p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+/* Image container - positioned on the right */
+.history-image-content {
+  width: 35%; /* Width as requested */
+  position: absolute;
+  right: 0;
+  top: 0; /* Start from the very top of the blue section */
+  bottom: 0; /* Extend to the very bottom */
+  padding: 8px 8px 8px 0; /* Minor padding on all sides except left */
+  z-index: 1;
+  overflow: hidden;
+  box-sizing: border-box; /* Ensure padding is included in width calculation */
+}
+
+.history-image-wrapper {
+  width: 100%;
+  height: 100%; /* Full height */
+  position: relative;
+  overflow: hidden;
+}
+
+.history-image-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Remove all the before/after decorative elements for history section */
+.history-section-inner::before,
+.history-section-inner::after,
+.history-section-content::before,
+.history-section-content::after {
+  display: none;
+}
+
+/* Keep the rest of your existing styles */
+.sticky-viewport {
+  height: 100vh;
+  top: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 0;
+  background-color: transparent;
+}
+
+/* Driver login section styling - ensure dark background */
+.driver-login-container {
+  background-color: #000;
+  padding: 30px 0;
+  margin-top: 0;
+  color: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .history-section-content {
+    top: 170vh;
+    padding: 0;
   }
   
-  .homepage {
-    background-color: #000000;
-    min-height: 100vh;
-  }
-  
-  /* Fullscreen 3D Model Section - replaces hero section */
-  .fullscreen-model-section {
+  .history-heading {
     width: 100%;
-    height: 90vh;
-    background-color: #000000;
+    padding: 20px 40px;
+  }
+  
+  .history-heading h2 {
+    font-size: 6rem;
+  }
+  
+  .history-text-content, .history-image-content {
+    width: 100%;
     position: relative;
   }
   
-  .fullscreen-model-viewer {
-    width: 100%;
-    border-radius: 0;
-    overflow: hidden;
-    background-color: #000000;
+  .history-text-content {
+    padding: 20px 40px;
+    font-size: 1rem;
   }
   
-  /* Model loading indicator */
-  .fullscreen-loading {
-    height: 90vh;
-    width: 100%;
-    display: flex;
+  .history-image-content {
+    height: 300px;
+    padding: 8px;
+  }
+  
+  .split-canvas {
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background-color: #000000;
-    color: white;
+    height: 80vh;
   }
   
-  .loading-spinner {
-    width: 50px;
-    height: 50px;
-    border: 5px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: #ff4040;
-    animation: spin 1s ease-in-out infinite;
-    margin-bottom: 15px;
-  }
-  
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-  
-  /* Cards Section */
-  .cards-section {
-    display: flex;
-    justify-content: space-around;
-    padding: 40px 20px;
-    gap: 20px;
-    background-color: #000000;
-  }
-  
-  .card {
-    background: #1a1a1a;
-    box-shadow: 0 2px 4px rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    text-align: center;
-    width: 300px;
-    padding: 20px;
-    transition: transform 0.3s ease;
-    color: #ffffff;
-  }
-  
-  .card:hover {
-    transform: translateY(-5px);
-  }
-  
-  .card img {
+  .split-canvas-left,
+  .split-canvas-right {
     width: 100%;
-    border-radius: 10px;
-    margin-bottom: 15px;
+    height: 50%;
   }
   
-  .card-title {
-    font-size: 1.2rem;
-    font-weight: bold;
-    margin-bottom: 10px;
-    color: #ffffff;
+  .model-heading {
+    font-size: 2.5rem;
   }
-  
-  .card-description {
-    color: #cccccc;
-    font-size: 0.95rem;
-  }
-  
-  /* Driver login container */
-  .driver-login-container {
-    padding: 20px;
-    background-color: #000000;
-    border-top: 1px solid #333333;
-  }
+}

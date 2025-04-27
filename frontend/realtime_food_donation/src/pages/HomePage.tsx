@@ -10,6 +10,8 @@ import { SignUpModal } from './SignUpModal';
 import { DriverSignInModal } from './DriverSigninModal';
 import { DriverSignUpModal } from './DriverSignUpModal';
 import { preloadAssets } from '../utils/fbxLoader';
+import FoodModelContainer from '../components/FoodModelContainer';
+import TruckModelContainer from '../components/TruckModelContainer';
 
 // Define asset paths
 const ASSETS = {
@@ -41,6 +43,18 @@ const ASSETS = {
   BOSS_ANIMATION: '/Bossdance.fbx',  
   BOSS_ANIMATION_2: '/Bossdance2.fbx',  
   SOPHIE_ANIMATION_2: '/Sophiedance2.fbx',
+  
+  // Adding Sophie's scroll animation sequences
+  SOPHIE_TURN: '/Sophieturn.fbx',
+  SOPHIE_JUMP: '/Sophiejump.fbx',
+  SOPHIE_THANKING: '/Sophiethanking.fbx', // New thanking animation
+  SOPHIE_POINTING: '/Sophiepointing.fbx', // New pointing animation
+  SOPHIE_IDLE: '/Sophieidle.fbx',
+
+  TRUCK: '/truck.glb',
+  FOOD_GARBAGE: '/food_garbage.glb',
+  FOOD: '/food.glb',
+
 };
 
 const HomePage = () => {
@@ -125,7 +139,7 @@ const HomePage = () => {
     {
       staticModelPath: ASSETS.ROUNDTABLE,
       position: [-0.7, -1, 4] as [number, number, number], // Position behind the bride
-      rotation: [0,0, 0] as [number, number, number], // Similar rotation to the bride
+      rotation: [0, 0, 0] as [number, number, number], // Similar rotation to the bride
       scale: 0.75, // Adjust scale as needed
       isStatic: true // Flag to indicate this is a static model
     },
@@ -145,14 +159,30 @@ const HomePage = () => {
       isStatic: true // Flag to indicate this is a static model
     },
 
+    // Sophie with scroll animation capabilities
     {
       modelPath: ASSETS.SOPHIE_MODEL,
+      // For normal state, use the hip hop animation
       animationPath: ASSETS.HIP_HOP_ANIMATION,
-      alternateAnimationPath: ASSETS.SOPHIE_ANIMATION_2, // Add alternate animation for hover
-      position: [0.5, -1.4, 5], // Positioned to the right side of the scene
-      rotation: [0, -Math.PI, 0], // Slightly angled to face center
-      scale: 0.1, // You might need to adjust this based on the model's actual size
-      modelName: "Sophie" // Optional: add model name for debugging
+      alternateAnimationPath: ASSETS.SOPHIE_ANIMATION_2, // For hover effects
+      position: [0.15, -1.4, 4], // Centered position within screen
+      rotation: [0, -Math.PI, 0], // Facing the camera
+      scale: 0.01,
+      modelName: "Sophie",
+      
+      // Enable scroll animation for Sophie
+      isScrollAnimated: true,
+      breakOutOfScreen: true, // Enable the break-out-of-screen effect
+      
+      // Define all scroll animation paths
+      scrollAnimationPaths: {
+        turn: ASSETS.SOPHIE_TURN,         // Sophie turns to face the viewer
+        jump: ASSETS.SOPHIE_JUMP,         // Sophie jumps out of the screen
+        thanking: ASSETS.SOPHIE_THANKING, // Sophie thanking animation
+        pointing: ASSETS.SOPHIE_POINTING, // Sophie pointing animation
+        idle: ASSETS.SOPHIE_IDLE,         // Sophie's idle animation after sequence
+        default: ASSETS.HIP_HOP_ANIMATION // Default animation when not in scroll sequence
+      }
     },
 
     {
@@ -194,7 +224,6 @@ const HomePage = () => {
     preloadAssets(assetsToPreload);
     
     // Set a timeout to indicate loading is complete
-    // This is optional but gives a nicer UX
     const timer = setTimeout(() => {
       setModelLoaded(true);
     }, 2000);
@@ -250,49 +279,66 @@ const HomePage = () => {
         />
       )}
 
-      {/* Full-screen 3D Model Section */}
-      <section className="fullscreen-model-section" style={{ backgroundColor: '#000', paddingTop: '20px', paddingBottom: '20px' }}>
-        {modelLoaded ? (
-          <ModelContainer 
-            models={modelConfigs}
-            height="90vh"
-            className="fullscreen-model-viewer"
-            backgroundColor="#161616" // Slightly darker background
-          />
-        ) : (
-          <div className="fullscreen-loading" style={{ 
-            height: '90vh', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            justifyContent: 'center', 
-            alignItems: 'center',
-            backgroundColor: '#000'
-          }}>
-            <div className="loading-spinner"></div>
-            <p style={{ color: '#fff', marginTop: '20px' }}>Loading 3D Experience...</p>
+      {/* Full-screen 3D Model Section with additional height for scroll animation */}
+      <section className="fullscreen-model-section">
+        <div className="sticky-viewport">
+          {modelLoaded ? (
+            <ModelContainer 
+              models={modelConfigs}
+              height="90vh"
+              className="fullscreen-model-viewer"
+              backgroundColor="#161616" // Slightly darker background
+              enableScrollAnimation={true} // Enable scroll animation controller
+            />
+          ) : (
+            <div className="fullscreen-loading" style={{ 
+              height: '90vh', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              justifyContent: 'center', 
+              alignItems: 'center',
+              backgroundColor: '#000'
+            }}>
+              <div className="loading-spinner"></div>
+              <p style={{ color: '#fff', marginTop: '20px' }}>Loading 3D Experience...</p>
+            </div>
+          )}
+        </div>
+        
+        {/* Green section content with updated styling */}
+        <div className="history-section-content">
+          <div className="history-section-inner">
+            <div className="history-heading">
+              <h2>History</h2>
+            </div>
+            
+            <div className="history-content-container">
+              <div className="history-text-content">
+                <p>Save delicious food from going to waste — order surplus food from weddings and celebrations right here. Planning ahead? You can also <em>preorder</em> food before the event even happens!</p>
+                <p>Hosting an event? You can <strong>register as a donor</strong> and share extra food to help NGOs and people in need.</p>
+                <p><strong>Fresh. Affordable. Sustainable. Compassionate.</strong> Join us in making a difference — one meal at a time.</p>
+              </div>
+              
+              <div className="history-image-content">
+                <div className="history-image-wrapper">
+                  <img src="/kids.jpg" alt="Food sharing initiative" />
+                </div>
+              </div>
+            </div>
           </div>
-        )}
-      </section>
+        </div>
 
-      <section className="cards-section">
-        <Card
-          image="/order_online.jpeg"
-          title="Order Online"
-          description="Stay home and order to your doorstep"
-        />
-        <Card
-          image="/dining.jpg"
-          title="Dining"
-          description="View the city's favourite dining venues"
-        />
-        <Card
-          image="/donation_events.jpg"
-          title="Live Events"
-          description="Discover India's best events & concerts"
-        />
-      </section>
+        {/* Split canvas section - positioned correctly before driver login section */}
+     {/* Split canvas section with 3D models and driver login */}
+{/* Split canvas section with 3D models and driver login */}
+{/* Split canvas section with 3D models and driver login */}
+<div className="split-canvas-container">
+  <div className="split-canvas">
+    {/* Left side - Truck model with driver login */}
+    <div className="split-canvas-left">
+      <TruckModelContainer />
       
-      {/* Driver login section with both login and signup options */}
+      {/* Driver login section - updated styling */}
       <div className="driver-login-container mt-8 text-center pb-8">
         <p className="text-gray-300 mb-3">Are you a delivery partner?</p>
         {isDriverLoading ? (
@@ -303,28 +349,39 @@ const HomePage = () => {
           <div className="flex justify-center">
             <a 
               href="/driver" 
-              className="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded transition-colors"
+              className="driver-button primary"
             >
               Go to Driver Dashboard
             </a>
           </div>
         ) : (
-          <div className="flex justify-center space-x-4">
+          <div className="flex justify-center space-x-8">
             <button 
               onClick={() => setShowDriverSignInModal(true)}
-              className="bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium py-2 px-4 rounded transition-colors"
+              className="driver-button"
             >
               Login as Driver
             </button>
             <button 
               onClick={() => setShowDriverSignUpModal(true)}
-              className="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded transition-colors"
+              className="driver-button primary"
             >
               Become a Driver
             </button>
           </div>
         )}
       </div>
+    </div>
+    
+    {/* Right side - Food model that changes on hover */}
+    <div className="split-canvas-right">
+      <FoodModelContainer />
+    </div>
+  </div>
+</div>
+      </section>
+      
+  
     </div>
   );
 };
