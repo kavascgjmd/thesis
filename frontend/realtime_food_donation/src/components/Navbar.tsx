@@ -1,4 +1,3 @@
-// components/Navbar.tsx
 import { FC } from 'react';
 import '../styles/Navbar.css';
 
@@ -48,11 +47,9 @@ const Navbar: FC<NavbarProps> = ({
   return (
     <nav className="navbar">
       <div className="nav-left">
-        <a href="/" className="logo">Food App</a>
+        <a href="/" className="logo">Second Serve</a>
       </div>
       <div className="nav-right">
-        <a href="#" className="nav-link">Get the App</a>
-        
         {isAnyUserAuthenticated ? (
           <>
             <span className="nav-link user-greeting">{getWelcomeText()}</span>
@@ -62,7 +59,7 @@ const Navbar: FC<NavbarProps> = ({
                 e.preventDefault();
                 handleLogout();
               }} 
-              className="nav-link nav-button"
+              className="nav-link"
             >
               Sign out
             </a>
@@ -85,7 +82,7 @@ const Navbar: FC<NavbarProps> = ({
                 e.preventDefault();
                 onSignUpClick();
               }} 
-              className="nav-link nav-button"
+              className="nav-link"
             >
               Sign up
             </a>

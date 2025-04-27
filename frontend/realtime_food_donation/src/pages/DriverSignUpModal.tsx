@@ -219,218 +219,222 @@ export const DriverSignUpModal: React.FC<DriverSignUpModalProps> = ({ onClose, s
 
   return (
     <div 
-      className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+      className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm overflow-hidden"
       onClick={handleBackdropClick}
     >
       <div 
-        className="modal-content bg-white w-[480px] rounded-lg shadow-xl p-6 relative animate-modalFade"
+        className="modal-content bg-white w-[480px] rounded-lg shadow-xl relative animate-modalFade max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         <button 
           onClick={onClose}
-          className="modal-close-button absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+          className="modal-close-button absolute right-4 top-4 text-gray-400 hover:text-gray-600 z-10"
           disabled={isLoading}
         >
           <X className="h-5 w-5" />
         </button>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded">
-            {error}
-          </div>
-        )}
+        <div className="p-6 overflow-y-auto flex-1">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded">
+              {error}
+            </div>
+          )}
 
-        {step === 1 ? (
-          <>
-            <h2 className="text-2xl font-medium text-gray-800 mb-6">Driver Sign up</h2>
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  name="username"
-                  placeholder="Full Name"
-                  value={formData.username}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
-                  disabled={isLoading}
-                />
-                
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="Email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
-                  disabled={isLoading}
-                />
-
-                <div>
+          {step === 1 ? (
+            <>
+              <h2 className="text-2xl font-medium text-gray-800 mb-6">Driver Sign up</h2>
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <div className="space-y-4">
                   <input
-                    type="password"
-                    name="password"
-                    placeholder="Password"
-                    value={formData.password}
+                    type="text"
+                    name="username"
+                    placeholder="Full Name"
+                    value={formData.username}
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
                     required
                     disabled={isLoading}
                   />
-                  <div className="mt-2 space-y-1">
-                    {passwordRequirements.map((req) => (
-                      <div key={req.key} className="flex items-center text-xs">
-                        {validationStates[req.key as keyof typeof validationStates] ? (
-                          <Check className="h-3.5 w-3.5 text-green-500 mr-1.5" />
-                        ) : (
-                          <AlertCircle className="h-3.5 w-3.5 text-red-500 mr-1.5" />
-                        )}
-                        <span className={validationStates[req.key as keyof typeof validationStates] ? 'text-green-500' : 'text-red-500'}>
-                          {req.label}
-                        </span>
-                      </div>
-                    ))}
+                  
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="Email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                  />
+
+                  <div>
+                    <input
+                      type="password"
+                      name="password"
+                      placeholder="Password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                      required
+                      disabled={isLoading}
+                    />
+                    <div className="mt-2 space-y-1">
+                      {passwordRequirements.map((req) => (
+                        <div key={req.key} className="flex items-center text-xs">
+                          {validationStates[req.key as keyof typeof validationStates] ? (
+                            <Check className="h-3.5 w-3.5 text-green-500 mr-1.5" />
+                          ) : (
+                            <AlertCircle className="h-3.5 w-3.5 text-red-500 mr-1.5" />
+                          )}
+                          <span className={validationStates[req.key as keyof typeof validationStates] ? 'text-green-500' : 'text-red-500'}>
+                            {req.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
+
+                  <input
+                    type="tel"
+                    name="phone"
+                    placeholder="Phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                  />
+
+                  <textarea
+                    name="address"
+                    placeholder="Address"
+                    value={formData.address}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    rows={3}
+                    disabled={isLoading}
+                  />
+
+                  <select
+                    name="vehicle_type"
+                    value={formData.vehicle_type}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                  >
+                    <option value="">Select Vehicle Type</option>
+                    <option value="Bike">Bike</option>
+                    <option value="Scooter">Scooter</option>
+                    <option value="Car">Car</option>
+                    <option value="Van">Van</option>
+                  </select>
+
+                  <input
+                    type="text"
+                    name="vehicle_number"
+                    placeholder="Vehicle Number"
+                    value={formData.vehicle_number}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                  />
+
+                  <input
+                    type="text"
+                    name="license_number"
+                    placeholder="License Number"
+                    value={formData.license_number}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                  />
+
+                  <input
+                    type="text"
+                    name="service_area"
+                    placeholder="Service Area"
+                    value={formData.service_area}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                  />
+
+                  <input
+                    type="number"
+                    name="max_delivery_distance"
+                    placeholder="Maximum Delivery Distance (km)"
+                    value={formData.max_delivery_distance}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    required
+                    disabled={isLoading}
+                    min="1"
+                  />
+
+                 <input
+                    type="file"
+                    name="profile_picture"
+                    accept="image/*"
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
+                    disabled={isLoading}
+                  />
                 </div>
 
+                <div className="pt-4 pb-2">
+                  <button
+                    type="submit"
+                    disabled={!isPasswordValid() || isLoading}
+                    className="w-full bg-red-500 text-white py-3 rounded-md hover:bg-red-600 transition-colors font-medium text-[15px] disabled:bg-red-300"
+                  >
+                    {isLoading ? 'Creating account...' : 'Create Driver Account'}
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2 className="text-[22px] font-medium text-gray-800 mb-6">Verify Your Phone Number</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                We've sent a verification code to your phone number. Please enter it below.
+                Code expires in {formatTime(timeLeft)}.
+              </p>
+              <form onSubmit={handleOTPVerification} className="space-y-4">
                 <input
-                  type="tel"
-                  name="phone"
-                  placeholder="Phone"
-                  value={formData.phone}
+                  type="text"
+                  name="otp"
+                  placeholder="Enter OTP"
+                  value={formData.otp}
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
                   required
                   disabled={isLoading}
                 />
-
-                <textarea
-                  name="address"
-                  placeholder="Address"
-                  value={formData.address}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  rows={3}
-                  disabled={isLoading}
-                />
-
-                <select
-                  name="vehicle_type"
-                  value={formData.vehicle_type}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
+                <button
+                  type="submit"
+                  className="w-full bg-red-500 text-white py-3 rounded-md hover:bg-red-600 transition-colors font-medium text-[15px] disabled:bg-red-300"
                   disabled={isLoading}
                 >
-                  <option value="">Select Vehicle Type</option>
-                  <option value="Bike">Bike</option>
-                  <option value="Scooter">Scooter</option>
-                  <option value="Car">Car</option>
-                  <option value="Van">Van</option>
-                </select>
-
-                <input
-                  type="text"
-                  name="vehicle_number"
-                  placeholder="Vehicle Number"
-                  value={formData.vehicle_number}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
-                  disabled={isLoading}
-                />
-
-                <input
-                  type="text"
-                  name="license_number"
-                  placeholder="License Number"
-                  value={formData.license_number}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
-                  disabled={isLoading}
-                />
-
-                <input
-                  type="text"
-                  name="service_area"
-                  placeholder="Service Area"
-                  value={formData.service_area}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
-                  disabled={isLoading}
-                />
-
-                <input
-                  type="number"
-                  name="max_delivery_distance"
-                  placeholder="Maximum Delivery Distance (km)"
-                  value={formData.max_delivery_distance}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  required
-                  disabled={isLoading}
-                  min="1"
-                />
-
-               <input
-                  type="file"
-                  name="profile_picture"
-                  accept="image/*"
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                  disabled={isLoading}
-                />
+                  {isLoading ? 'Verifying...' : 'Verify OTP'}
+                </button>
+              </form>
+              <div className="mt-6 text-center">
+                <button 
+                  onClick={handleResendOTP}
+                  className="text-red-500 hover:text-red-600 text-[15px]"
+                  disabled={resendDisabled || isLoading || timeLeft > 0}
+                >
+                  Resend OTP {resendDisabled && '(wait 30s)'}
+                </button>
               </div>
-
-              <button
-                type="submit"
-                disabled={!isPasswordValid() || isLoading}
-                className="w-full bg-red-500 text-white py-3 rounded-md hover:bg-red-600 transition-colors font-medium text-[15px] disabled:bg-red-300"
-              >
-                {isLoading ? 'Creating account...' : 'Create Driver Account'}
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <h2 className="text-[22px] font-medium text-gray-800 mb-6">Verify Your Phone Number</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              We've sent a verification code to your phone number. Please enter it below.
-              Code expires in {formatTime(timeLeft)}.
-            </p>
-            <form onSubmit={handleOTPVerification} className="space-y-4">
-              <input
-                type="text"
-                name="otp"
-                placeholder="Enter OTP"
-                value={formData.otp}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-700 text-[15px]"
-                required
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                className="w-full bg-red-500 text-white py-3 rounded-md hover:bg-red-600 transition-colors font-medium text-[15px] disabled:bg-red-300"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Verifying...' : 'Verify OTP'}
-              </button>
-            </form>
-            <div className="mt-6 text-center">
-              <button 
-                onClick={handleResendOTP}
-                className="text-red-500 hover:text-red-600 text-[15px]"
-                disabled={resendDisabled || isLoading || timeLeft > 0}
-              >
-                Resend OTP {resendDisabled && '(wait 30s)'}
-              </button>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
