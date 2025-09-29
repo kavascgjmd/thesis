@@ -22,6 +22,7 @@ const nodemailer_1 = __importDefault(require("nodemailer"));
 const s3Service_1 = __importDefault(require("../services/s3Service"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const router = (0, express_1.Router)();
+const mapService_1 = __importDefault(require("../services/mapService"));
 // Configure email transporter
 const transporter = nodemailer_1.default.createTransport({
     host: process.env.SMTP_HOST || 'smtp.mailtrap.io',
@@ -69,7 +70,7 @@ const donorDetailsSchema = zod_1.z.object({
     contact_number: zod_1.z.string().max(50),
     operating_hours: zod_1.z.string().max(255)
 });
-// Updated NGO schema with new verification fields
+// Updated NGO schema with all new fields from the database
 const ngoDetailsSchema = zod_1.z.object({
     ngo_name: zod_1.z.string().max(255),
     mission_statement: zod_1.z.string(),
@@ -77,16 +78,31 @@ const ngoDetailsSchema = zod_1.z.object({
     contact_number: zod_1.z.string().max(50),
     operating_hours: zod_1.z.string().max(255),
     target_demographics: zod_1.z.string(),
-    // New fields from the updated schema
+    // Original verification fields
     ngo_type: zod_1.z.string().max(50).optional().nullable(),
     registration_number: zod_1.z.string().max(100).optional().nullable(),
-    registration_certificate: zod_1.z.string().max(255).optional().nullable(),
+    registration_certificate: zod_1.z.string().optional().nullable(),
+    registration_certificate_url: zod_1.z.string().max(255).optional().nullable(),
+    registration_certificate_storage: zod_1.z.string().max(50).optional().nullable(),
     pan_number: zod_1.z.string().max(20).optional().nullable(),
-    pan_card_image: zod_1.z.string().max(255).optional().nullable(),
+    pan_card_image: zod_1.z.string().optional().nullable(),
+    pan_card_image_url: zod_1.z.string().max(255).optional().nullable(),
+    pan_card_image_storage: zod_1.z.string().max(50).optional().nullable(),
     fcra_number: zod_1.z.string().max(100).optional().nullable(),
-    fcra_certificate: zod_1.z.string().max(255).optional().nullable(),
-    tax_exemption_certificate: zod_1.z.string().max(255).optional().nullable(),
-    annual_reports_link: zod_1.z.string().max(255).optional().nullable()
+    fcra_certificate: zod_1.z.string().optional().nullable(),
+    fcra_certificate_url: zod_1.z.string().max(255).optional().nullable(),
+    fcra_certificate_storage: zod_1.z.string().max(50).optional().nullable(),
+    tax_exemption_certificate: zod_1.z.string().optional().nullable(),
+    tax_exemption_certificate_url: zod_1.z.string().max(255).optional().nullable(),
+    tax_exemption_certificate_storage: zod_1.z.string().max(50).optional().nullable(),
+    annual_reports_link: zod_1.z.string().max(255).optional().nullable(),
+    // New capacity and location fields
+    storage_capacity_kg: zod_1.z.number().optional().nullable(),
+    latitude: zod_1.z.number().optional().nullable(),
+    longitude: zod_1.z.number().optional().nullable(),
+    vehicle_capacity_kg: zod_1.z.number().optional().nullable(),
+    food_preferences: zod_1.z.array(zod_1.z.string()).optional().nullable(),
+    priority_level: zod_1.z.number().optional().nullable()
 });
 // Updated recipient schema with new verification fields
 const recipientDetailsSchema = zod_1.z.object({
@@ -202,11 +218,27 @@ router.put('/basic', auth_1.authMiddleware, (req, res) => __awaiter(void 0, void
             }
         }
         else if (role === 'NGO') {
+            // For NGO, also calculate latitude and longitude using MapService if address is provided
             const existingNGO = yield (0, util_1.query)('SELECT * FROM ngos WHERE user_id = $1', [user.id]);
             if (existingNGO.rows.length === 0) {
                 // Create initial NGO record
                 yield (0, util_1.query)(`INSERT INTO ngos (user_id, created_at, updated_at) 
            VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, [user.id]);
+            }
+            // If address is provided, use MapService to get coordinates
+            if (address) {
+                try {
+                    const locationData = yield mapService_1.default.getCoordinates(address);
+                    // Update NGO record with the new coordinates
+                    yield (0, util_1.query)(`UPDATE ngos 
+             SET latitude = $1, longitude = $2, updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = $3`, [locationData.lat, locationData.lng, user.id]);
+                    console.log(`Updated coordinates for NGO (user_id: ${user.id}): lat=${locationData.lat}, lng=${locationData.lng}`);
+                }
+                catch (geoError) {
+                    console.error('Failed to get coordinates for NGO address:', geoError);
+                    // Continue without coordinates - this is not a critical error
+                }
             }
         }
         else if (role === 'RECIPIENT') {
@@ -277,35 +309,43 @@ router.put('/role-details', auth_1.authMiddleware, (req, res) => __awaiter(void 
                 validationResult = ngoDetailsSchema.safeParse(req.body);
                 if (validationResult.success) {
                     const ngoData = validationResult.data;
-                    const { ngo_name, mission_statement, contact_person, contact_number, operating_hours, target_demographics, ngo_type, registration_number, registration_certificate, pan_number, pan_card_image, fcra_number, fcra_certificate, tax_exemption_certificate, annual_reports_link } = ngoData;
+                    const { ngo_name, mission_statement, contact_person, contact_number, operating_hours, target_demographics, ngo_type, registration_number, registration_certificate, registration_certificate_url, registration_certificate_storage, pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage, fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage, tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage, annual_reports_link, storage_capacity_kg, latitude, longitude, vehicle_capacity_kg, food_preferences, priority_level } = ngoData;
                     // Check if this is a new entry or substantial update that requires verification
                     if (!existingRecord.rows.length) {
                         verificationNeeded = true;
-                        // Insert new record
+                        // Insert new record with all fields
                         updateQuery = yield (0, util_1.query)(`INSERT INTO ngos (
-                user_id, ngo_name, mission_statement, contact_person, contact_number, 
-                operating_hours, target_demographics, ngo_type, registration_number, 
-                registration_certificate, pan_number, pan_card_image, fcra_number, 
-                fcra_certificate, tax_exemption_certificate, annual_reports_link,
-                is_verified, created_at, updated_at
-              )
-              VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-              )
-              RETURNING *`, [
+                  user_id, ngo_name, mission_statement, contact_person, contact_number, 
+                  operating_hours, target_demographics, ngo_type, registration_number, 
+                  registration_certificate, registration_certificate_url, registration_certificate_storage,
+                  pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage,
+                  fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage,
+                  tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage,
+                  annual_reports_link, storage_capacity_kg, latitude, longitude,
+                  vehicle_capacity_kg, food_preferences, priority_level,
+                  is_verified, created_at, updated_at
+                )
+                VALUES (
+                  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+                  $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+                  FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                RETURNING *`, [
                             user.id, ngo_name, mission_statement, contact_person, contact_number,
                             operating_hours, target_demographics, ngo_type, registration_number,
-                            registration_certificate, pan_number, pan_card_image, fcra_number,
-                            fcra_certificate, tax_exemption_certificate, annual_reports_link
+                            registration_certificate, registration_certificate_url, registration_certificate_storage,
+                            pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage,
+                            fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage,
+                            tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage,
+                            annual_reports_link, storage_capacity_kg, latitude, longitude,
+                            vehicle_capacity_kg, food_preferences, priority_level
                         ]);
                     }
                     else {
                         // Check if verification fields have changed
                         const criticalFields = [
-                            'registration_number', 'pan_number', 'fcra_number',
-                            'registration_certificate', 'pan_card_image', 'fcra_certificate',
-                            'tax_exemption_certificate'
+                            'registration_number', 'registration_certificate', 'pan_number', 'pan_card_image',
+                            'fcra_number', 'fcra_certificate', 'tax_exemption_certificate'
                         ];
                         // Type-safe check for changed critical fields
                         const hasChangedCriticalFields = criticalFields.some(field => {
@@ -315,20 +355,28 @@ router.put('/role-details', auth_1.authMiddleware, (req, res) => __awaiter(void 
                         });
                         // If critical verification fields have changed, set verification status to false
                         verificationNeeded = hasChangedCriticalFields;
-                        // Update existing record
+                        // Update existing record with all fields
                         updateQuery = yield (0, util_1.query)(`UPDATE ngos 
-              SET ngo_name = $2, mission_statement = $3, contact_person = $4,
-                  contact_number = $5, operating_hours = $6, target_demographics = $7,
-                  ngo_type = $8, registration_number = $9, registration_certificate = $10,
-                  pan_number = $11, pan_card_image = $12, fcra_number = $13,
-                  fcra_certificate = $14, tax_exemption_certificate = $15,
-                  annual_reports_link = $16, is_verified = $17, updated_at = CURRENT_TIMESTAMP
-              WHERE user_id = $1
-              RETURNING *`, [
+                SET ngo_name = $2, mission_statement = $3, contact_person = $4,
+                    contact_number = $5, operating_hours = $6, target_demographics = $7,
+                    ngo_type = $8, registration_number = $9, 
+                    registration_certificate = $10, registration_certificate_url = $11, registration_certificate_storage = $12,
+                    pan_number = $13, pan_card_image = $14, pan_card_image_url = $15, pan_card_image_storage = $16,
+                    fcra_number = $17, fcra_certificate = $18, fcra_certificate_url = $19, fcra_certificate_storage = $20,
+                    tax_exemption_certificate = $21, tax_exemption_certificate_url = $22, tax_exemption_certificate_storage = $23,
+                    annual_reports_link = $24, storage_capacity_kg = $25, latitude = $26, longitude = $27,
+                    vehicle_capacity_kg = $28, food_preferences = $29, priority_level = $30,
+                    is_verified = $31, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = $1
+                RETURNING *`, [
                             user.id, ngo_name, mission_statement, contact_person, contact_number,
                             operating_hours, target_demographics, ngo_type, registration_number,
-                            registration_certificate, pan_number, pan_card_image, fcra_number,
-                            fcra_certificate, tax_exemption_certificate, annual_reports_link,
+                            registration_certificate, registration_certificate_url, registration_certificate_storage,
+                            pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage,
+                            fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage,
+                            tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage,
+                            annual_reports_link, storage_capacity_kg, latitude, longitude,
+                            vehicle_capacity_kg, food_preferences, priority_level,
                             // If critical fields changed, set to false, otherwise keep existing status
                             hasChangedCriticalFields ? false : existingRecord.rows[0].is_verified
                         ]);
@@ -592,7 +640,7 @@ router.get('/completion', auth_1.authMiddleware, (req, res) => __awaiter(void 0,
         if (roleDetails) {
             // Calculate differently based on role to account for verification fields
             if (user.role.toUpperCase() === 'NGO') {
-                // For NGOs, include verification documents in completion calculation
+                // For NGOs, include verification documents and new fields in completion calculation
                 const requiredFields = [
                     'ngo_name', 'mission_statement', 'contact_person', 'contact_number',
                     'operating_hours', 'target_demographics'
@@ -605,17 +653,24 @@ router.get('/completion', auth_1.authMiddleware, (req, res) => __awaiter(void 0,
                     'fcra_number', 'fcra_certificate', 'tax_exemption_certificate',
                     'annual_reports_link'
                 ];
+                const capacityFields = [
+                    'storage_capacity_kg', 'latitude', 'longitude',
+                    'vehicle_capacity_kg', 'food_preferences', 'priority_level'
+                ];
                 const requiredFilled = requiredFields.filter(f => roleDetails[f]).length;
                 const verificationFilled = verificationFields.filter(f => roleDetails[f]).length;
                 const optionalFilled = optionalFields.filter(f => roleDetails[f]).length;
+                const capacityFilled = capacityFields.filter(f => roleDetails[f]).length;
                 // Calculate weighted completion
-                const requiredWeight = 25; // 25% for required fields
-                const verificationWeight = 20; // 20% for verification fields
+                const requiredWeight = 20; // 20% for required fields
+                const verificationWeight = 15; // 15% for verification fields
                 const optionalWeight = 5; // 5% for optional fields
+                const capacityWeight = 10; // 10% for capacity fields
                 roleCompletion =
                     (requiredFilled / requiredFields.length) * requiredWeight +
                         (verificationFilled / verificationFields.length) * verificationWeight +
-                        (optionalFilled / optionalFields.length) * optionalWeight;
+                        (optionalFilled / optionalFields.length) * optionalWeight +
+                        (capacityFilled / capacityFields.length) * capacityWeight;
             }
             else if (user.role.toUpperCase() === 'RECIPIENT') {
                 // For recipients, include verification documents in completion calculation

@@ -1,0 +1,186 @@
+# Order API Router Documentation
+
+This API router handles order management in a food delivery system, with separate authentication and endpoints for users, drivers, and administrators.
+
+## Authentication
+
+The router uses two middleware types:
+- `authMiddleware`: For regular users and admins
+- `driverAuthMiddleware`: For delivery drivers
+
+## Route Overview
+
+### User Routes
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/my-orders` | User | Get all orders for the authenticated user |
+| POST | `/` | User | Create a new order from a cart |
+| GET | `/user/:id` | User | Get specific order details for a user |
+| POST | `/:id/payment` | User | Update payment status for an order |
+
+### Driver Routes
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/driver` | Driver | Get all orders for the driver (with optional filtering) |
+| GET | `/` | Driver | Alternative driver orders endpoint with filtering |
+| GET | `/driver/:id` | Driver | Get specific order details for a driver |
+| POST | `/:id/status` | Driver | Update delivery status for an order |
+
+### Admin Routes
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin` | Admin | Get all orders (admin only) |
+| POST | `/:id/driver` | Admin | Assign a driver to an order |
+
+## Request/Response Formats
+
+### Create Order
+**Endpoint:** `POST /`
+
+**Request:**
+```json
+{
+  "cartId": 123,
+  "deliveryAddress": "123 Main St, Anytown"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Order created successfully",
+  "orderId": 456
+}
+```
+
+### Update Delivery Status
+**Endpoint:** `POST /:id/status`
+
+**Request:**
+```json
+{
+  "status": "picked_up",
+  "location": {
+    "lat": 37.7749,
+    "lng": -122.4194
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Delivery status updated successfully"
+}
+```
+
+### Get Order Details
+**Endpoint:** `GET /user/:id` or `GET /driver/:id`
+
+**Response:**
+```json
+{
+  "success": true,
+  "order": {
+    "id": 123,
+    "orderStatus": "in_transit",
+    "paymentStatus": "paid",
+    "deliveryFee": 5.99,
+    "totalAmount": 35.99,
+    "deliveryAddress": "123 Main St, Anytown",
+    "items": [
+      {
+        "food_type": "meal",
+        "food_category": "dinner",
+        "donor_name": "Restaurant A",
+        "quantity": 2,
+        "servings": 4,
+        "weightKg": 1.5,
+        "packageSize": "medium",
+        "pickupLocation": "456 Oak St",
+        "expirationTime": "2025-05-05T18:00:00Z"
+      }
+    ],
+    "route": {
+      "path": [
+        {"lat": 37.7749, "lng": -122.4194},
+        {"lat": 37.7750, "lng": -122.4180}
+      ],
+      "totalDistance": 5.2,
+      "estimatedDuration": 15
+    },
+    "driverLocation": {
+      "lat": 37.7749,
+      "lng": -122.4194,
+      "timestamp": "2025-05-05T15:30:00Z"
+    },
+    "deliveryStatus": "in_transit",
+    "driver": {
+      "id": 789,
+      "name": "John Driver",
+      "phone": "555-123-4567",
+      "email": "john@example.com",
+      "rating": 4.8,
+      "avatar": "https://example.com/avatar.jpg"
+    }
+  }
+}
+```
+
+## Data Schemas
+
+### Order Creation
+```
+{
+  cartId: number (positive),
+  deliveryAddress: string (min 5 chars)
+}
+```
+
+### Driver Assignment
+```
+{
+  driverId: number (positive)
+}
+```
+
+### Status Update
+```
+{
+  status: enum ('assigned', 'picked_up', 'in_transit', 'delivered'),
+  location: {
+    lat: number,
+    lng: number
+  } (optional)
+}
+```
+
+### Payment Update
+```
+{
+  paymentStatus: enum ('pending', 'confirmed', 'paid', 'failed')
+}
+```
+
+## Features
+
+- **Status Filtering**: Driver routes support multiple status filtering using comma-separated values
+- **Payment Status Filtering**: Filter orders by payment status
+- **Auto-assignment**: Drivers can self-assign to orders by updating status to 'assigned'
+- **Location Tracking**: Driver locations are logged when status updates include location data
+- **Authorization**: Ensures users can only access their own orders
+- **Error Handling**: Comprehensive validation and error responses
+
+## Error Responses
+
+All endpoints return standardized error responses:
+
+```json
+{
+  "success": false,
+  "message": "Error description",
+  "errors": [] // Optional validation errors
+}
+```

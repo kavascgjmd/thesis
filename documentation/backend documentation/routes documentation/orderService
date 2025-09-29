@@ -1,0 +1,77 @@
+# OrderService
+
+A service for managing food donation orders, delivery logistics, and driver coordination.
+
+## Overview
+
+The OrderService handles the creation, management, and tracking of orders in a food donation system. It provides functionality for processing orders, assigning drivers, tracking deliveries, and monitoring driver performance.
+
+## Core Functionality
+
+### Order Processing
+
+- **Create orders from shopping carts**
+- **Update payment status**
+- **Query order details**
+- **Calculate delivery fees based on route distances**
+
+### Driver Management
+
+- **Assign drivers to orders**
+- **Track driver locations**
+- **Update delivery status**
+- **Monitor driver performance metrics**
+
+## Data Models
+
+### Main Models
+
+- **Order**: Contains order details, payment information, and delivery address
+- **Food Donation Item**: Food items with details like type, category, quantity
+- **Route**: Optimal delivery route with waypoints and estimated time
+- **Driver**: Driver details including location, contact information
+
+### Food Categories
+
+The system handles three types of food donations:
+- **Cooked Meals** (with servings info)
+- **Raw Ingredients** (with weight in kg)
+- **Packaged Items** (with package size)
+
+## API Reference
+
+### Order Management
+
+- `createOrderFromCart(cartId, userId, deliveryAddress)`: Creates a new order and returns orderId
+- `updatePaymentStatus(orderId, paymentStatus)`: Updates payment status ('pending', 'confirmed', 'paid', 'failed')
+- `getOrderById(orderId)`: Returns complete order details including items, route, and driver info
+- `getAllOrders(status?, driverId?, paymentStatus?)`: Returns orders with optional filters
+- `getUserOrders(userId)`: Returns all orders for a specific user
+
+### Delivery Management
+
+- `assignDriverToOrder(orderId, driverId)`: Assigns a driver to an order
+- `updateDeliveryStatus(orderId, status, location?)`: Updates delivery status and optionally driver location
+  - Valid statuses: 'assigned', 'picked_up', 'in_transit', 'delivered'
+- `isOrderAssignedToDriver(orderId, driverId)`: Checks if an order is assigned to a specific driver
+
+### Driver Operations
+
+- `getDriverCurrentLocation(driverId)`: Returns current driver coordinates
+- `getDriverCompletedOrders(driverId)`: Returns all completed orders for a driver
+- `getDriverPendingOrders(driverId)`: Returns all pending orders for a driver
+- `logDriverLocationHistory(driverId, lat, lng)`: Records driver location for tracking
+- `getDriverPerformanceMetrics(driverId)`: Returns statistics about driver performance
+
+## Order Workflow
+
+1. Order is created from cart (`createOrderFromCart`)
+2. Payment status is updated (`updatePaymentStatus`)
+3. Driver is assigned to order (`assignDriverToOrder`)
+4. Delivery status updates as order progresses (`updateDeliveryStatus`)
+5. Order is marked complete when delivered
+
+## Dependencies
+
+- **mapService**: External service for calculating routes and distances
+- **Database**: Postgres database with transaction support

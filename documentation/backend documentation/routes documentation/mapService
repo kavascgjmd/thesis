@@ -1,0 +1,123 @@
+# MapService
+
+A TypeScript service for handling location-based operations, route optimization, and driver tracking for food delivery operations.
+
+## Overview
+
+MapService provides functionality for:
+- Geocoding addresses to coordinates
+- Calculating optimal delivery routes
+- Tracking driver locations
+- Estimating delivery times
+- Storing route information in a database
+
+The service is designed to work with food donation/delivery applications, connecting donors with recipients through an optimized delivery system.
+
+## Dependencies
+
+- Google Maps API (for geocoding and directions)
+- Axios (for HTTP requests)
+- PostgreSQL database (via query utility)
+
+## Core Features
+
+### 1. Geocoding
+Converts addresses to geographic coordinates (latitude/longitude) using Google Maps Geocoding API.
+
+**Input:** Address string  
+**Output:** `Location` object with lat, lng, and formatted address
+
+### 2. Route Optimization
+Calculates the most efficient route for picking up food donations and delivering to customers.
+
+**Input:** Order ID  
+**Output:** `OptimalRoute` object with:
+- Path of route points
+- Total distance
+- Estimated duration
+- Waypoints for map rendering
+
+### 3. Driver Location Tracking
+Updates and retrieves driver locations.
+
+**Input:** Driver ID, latitude, longitude  
+**Output:** Stored driver location / `DriverLocation` object
+
+### 4. Delivery Time Estimation
+Calculates estimated delivery time based on route and current driver location.
+
+**Input:** Order ID  
+**Output:** Estimated delivery time in minutes
+
+## Key Methods
+
+### `getCoordinates(address: string): Promise<Location>`
+Converts an address to geographic coordinates.
+
+### `calculateOptimalRoute(orderId: number): Promise<OptimalRoute>`
+Calculates the optimal route for a delivery order:
+1. Retrieves delivery address and food pickup locations
+2. Gets coordinates for all locations
+3. Determines optimal route using either Google Directions API or nearest neighbor algorithm
+4. Saves route to database
+5. Returns route information with waypoints for client rendering
+
+### `updateDriverLocation(driverId: number, lat: number, lng: number): Promise<void>`
+Updates a driver's current location in the database.
+
+### `getDriverLocation(driverId: number): Promise<DriverLocation | null>`
+Retrieves a driver's most recent location.
+
+### `getDeliveryRoute(orderId: number): Promise<OptimalRoute | null>`
+Retrieves a previously calculated delivery route.
+
+### `getEstimatedDeliveryTime(orderId: number): Promise<number | null>`
+Calculates the estimated delivery time based on route and driver's current location.
+
+## Route Calculation Strategies
+
+The service uses two methods for route calculation:
+
+1. **Google Directions API** (preferred, used for routes with ≤ 4 points)
+   - Provides accurate routes with traffic considerations
+   - Optimizes waypoint order
+   - Limited by Google API restrictions
+
+2. **Nearest Neighbor Algorithm** (fallback for routes with > 4 points)
+   - Uses Haversine formula to calculate distances between points
+   - Implements a greedy algorithm to find a reasonable route
+   - Less accurate but works for any number of points
+
+## Database Integration
+
+The service stores:
+- Delivery routes
+- Route points/waypoints
+- Driver locations
+
+This allows for route history tracking and current status retrieval.
+
+## Usage Example
+
+```typescript
+// Get coordinates for an address
+const location = await mapService.getCoordinates('123 Main St, Anytown');
+
+// Calculate optimal route for an order
+const route = await mapService.calculateOptimalRoute(orderId);
+
+// Update driver location
+await mapService.updateDriverLocation(driverId, latitude, longitude);
+
+// Get estimated delivery time
+const eta = await mapService.getEstimatedDeliveryTime(orderId);
+```
+
+## Error Handling
+
+The service includes comprehensive error handling for:
+- API failures
+- Database errors
+- Missing data scenarios
+
+Errors are logged with detailed information to aid debugging.

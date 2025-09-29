@@ -1,0 +1,73 @@
+# Profile Routes Documentation
+
+## Base URL: `/api/profile`
+
+### Authentication
+- All routes require authentication (JWT token in header)
+
+### Routes:
+
+1. **GET /**  
+   - Get user profile with role-specific details
+   - Returns: Basic user info + role-specific details
+
+2. **PUT /basic**  
+   - Update basic profile info (username, email, phone, address, profile_picture)
+   - Input: BasicProfileSchema
+   - Returns: Updated user info
+
+3. **PUT /role-details**  
+   - Update role-specific details (different for Donor/NGO/Recipient)
+   - Input: Role-specific schema (DonorDetails/NGODetails/RecipientDetails)
+   - Returns: Updated role details + verification status
+
+4. **GET /verification-status**  
+   - Check account verification status
+   - Returns: is_verified, can_place_orders, verification_date, message
+
+5. **GET /completion**  
+   - Calculate profile completion percentage
+   - Returns: completion percentage (0-100)
+
+6. **POST /upload-profile-picture**  
+   - Upload profile picture to S3
+   - Input: {image: base64, fileType: string}
+   - Returns: imageUrl
+
+7. **POST /upload-document**  
+   - Upload verification documents (NGO/Recipient only)
+   - Input: {document: base64, fileType: string, documentType: string}
+   - Returns: documentUrl, triggers admin verification
+
+8. **GET /verify-document**  
+   - Admin endpoint to verify documents via email link
+   - Query params: token, action(approve/reject), logId
+
+9. **POST /admin-verify**  
+   - Admin manual verification endpoint
+   - Input: {userId, approved: boolean, notes: string}
+
+10. **OTP Verification Routes**  
+    - `/send-verification-otp` - Send OTP for email/phone change
+    - `/verify-otp` - Verify OTP and update field
+    - `/send-new-email-otp` - Send OTP to new email
+    - `/verify-new-email` - Verify new email OTP
+    - `/send-new-phone-otp` - Send OTP to new phone
+    - `/verify-new-phone` - Verify new phone OTP
+
+### Key Features:
+- Role-specific profile handling (Donor/NGO/Recipient)
+- Document verification system with admin approval
+- Email/SMS OTP verification for sensitive changes
+- Profile completion tracking
+- S3 integration for file uploads
+- Automatic geocoding for NGO addresses
+- Verification status tracking
+
+### Response Structure:
+```json
+{
+  "success": boolean,
+  "message": string,
+  "data": {...} // route-specific
+}

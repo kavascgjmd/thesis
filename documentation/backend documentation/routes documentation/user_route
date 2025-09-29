@@ -1,0 +1,69 @@
+# Auth Routes Documentation
+
+## Base URL: `/api/auth`
+
+### Authentication
+- JWT-based authentication using `token` stored in **HTTP-only cookie**
+
+### Routes:
+
+1. **POST /signup**  
+   - Begin signup process by validating input and sending OTP  
+   - Input: `{ username, email, password, phone, role }` (validated by Zod `userSchema`)  
+   - Action:  
+     - Validates input  
+     - Checks for existing username  
+     - Stores temp user in Redis  
+     - Sends OTP to phone number  
+   - Returns: `status`, `message`, `phone`, `expiresIn`
+
+2. **POST /verify-otp**  
+   - Complete signup by verifying OTP  
+   - Input: `{ phone, otp }`  
+   - Middleware:  
+     - `verifyOtpMiddleware` (OTP match + rate limiting)  
+   - Action:  
+     - Verifies OTP  
+     - Moves temp user to permanent user storage  
+     - Deletes temp user from Redis  
+     - Sets JWT in secure cookie  
+   - Returns: `message`, `user` (username, email, role)
+
+3. **POST /signin**  
+   - Login with credentials  
+   - Input: `{ username, password }`  
+   - Action:  
+     - Verifies credentials  
+     - Generates JWT and sets in secure cookie  
+   - Returns: `message`, `user` (username, email, role, profile_picture_url)
+
+4. **POST /signout**  
+   - Logout current user  
+   - Action:  
+     - Clears JWT cookie  
+   - Returns: `status`, `message`
+
+5. **GET /verify**  
+   - Verify current user session from cookie  
+   - Action:  
+     - Checks for valid token in cookie  
+     - Verifies token and fetches user  
+   - Returns:  
+     - If valid: `authenticated: true`, `user` (username, email, role, profile_picture_url)  
+     - If invalid/expired: `authenticated: false`, `message`
+
+### Key Features:
+- OTP-based signup with Redis-backed temp user storage
+- JWT authentication stored securely in cookies
+- Middleware protections (rate limiting, OTP checks)
+- Secure cookie flags (`httpOnly`, `secure`, `sameSite`)
+- Role-based token payload (`id`, `role`)
+- Graceful failure messages and session expiry handling
+
+### Response Structure:
+```json
+{
+  "status": "success | error",
+  "message": "string",
+  "data": {...} // route-specific data
+}

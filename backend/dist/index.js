@@ -26,6 +26,7 @@ const food_1 = __importDefault(require("./routes/food"));
 const cart_1 = __importDefault(require("./routes/cart"));
 const order_1 = __importDefault(require("./routes/order"));
 const driver_1 = __importDefault(require("./routes/driver"));
+const food_allocation_milp_1 = __importDefault(require("./routes/food-allocation-milp"));
 const app = (0, express_1.default)();
 (function () {
     return __awaiter(this, void 0, void 0, function* () {
@@ -49,6 +50,7 @@ app.use('/api/foods', food_1.default);
 app.use('/api/cart', cart_1.default);
 app.use('/api/orders', order_1.default);
 app.use('/api/driver', driver_1.default);
+app.use('/api/food', food_allocation_milp_1.default);
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ status: 'error', message: 'Internal Server Error' });

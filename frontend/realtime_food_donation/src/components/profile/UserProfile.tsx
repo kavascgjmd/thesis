@@ -5,6 +5,9 @@ import { ProfileCompletion } from './ProfileCompletion';
 import { RoleSpecificCard } from './RoleSpecificCard';
 import { EditProfileModal } from './EditProfileModal';
 import { Alert, AlertDescription } from '../ui/alert/Alert';
+import { NGOFoodAllocations } from './NGOFoodAllocations';
+import { Link } from 'react-router-dom';
+import { toUpper } from 'lodash';
 
 export const UserProfile: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
@@ -20,7 +23,7 @@ export const UserProfile: React.FC = () => {
     uploadDocument, 
     verificationStatus 
   } = useProfile();
-
+  
   if (loading && !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -28,7 +31,7 @@ export const UserProfile: React.FC = () => {
       </div>
     );
   }
-
+  
   if (error) {
     return (
       <Alert variant="destructive">
@@ -36,9 +39,9 @@ export const UserProfile: React.FC = () => {
       </Alert>
     );
   }
-
+  
   if (!user) return null;
-
+  
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="h-48 bg-gradient-to-r from-rose-500 to-rose-600" />
@@ -47,10 +50,25 @@ export const UserProfile: React.FC = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <ProfileHeader user={user} onEdit={() => setIsEditModalOpen(true)} />
           {completion < 100 && <ProfileCompletion completion={completion} />}
+          
+          {/* Add Manage Food Donations button for donors */}
+          {toUpper(user.role) === 'DONOR' && (
+            <div className="mt-4">
+              <Link 
+                to="/donor/food-donations" 
+                className="inline-block px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600"
+              >
+                Manage Food Donations
+              </Link>
+            </div>
+          )}
         </div>
-
+        
         <RoleSpecificCard user={user} roleSpecificDetails={roleDetails} />
-
+        
+        {/* Show food allocations component if user is an NGO */}
+        {user.role === 'NGO' && <NGOFoodAllocations />}
+        
         <EditProfileModal 
           isOpen={isEditModalOpen} 
           onClose={() => setIsEditModalOpen(false)} 
@@ -58,8 +76,8 @@ export const UserProfile: React.FC = () => {
           roleSpecificDetails={roleDetails} 
           onUpdateUser={updateBasicInfo} 
           onUpdateRoleDetails={updateRoleDetails} 
-          onUploadDocument={uploadDocument}
-          verificationStatus={verificationStatus}
+          onUploadDocument={uploadDocument} 
+          verificationStatus={verificationStatus} 
         />
       </div>
     </div>

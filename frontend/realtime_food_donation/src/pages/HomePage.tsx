@@ -54,10 +54,14 @@ const ASSETS = {
   TRUCK: '/truck.glb',
   FOOD_GARBAGE: '/food_garbage.glb',
   FOOD: '/food.glb',
-
 };
 
-const HomePage = () => {
+// Add the toggleView prop to HomePage
+interface HomePageProps {
+  toggleView: () => void;
+}
+
+const HomePage = ({ toggleView }: HomePageProps) => {
   const { 
     isAuthenticated, 
     setIsAuthenticated, 
@@ -90,6 +94,8 @@ const HomePage = () => {
       scale: 0.05,
       guitarModelPath: ASSETS.GIBSON_GUITAR // Include the GLB guitar
     },
+    // ... rest of the model configurations remain the same
+    // (keeping the original model configs to maintain functionality)
     {
       modelPath: ASSETS.SINGER_MODEL,
       animationPath: ASSETS.SINGING_ANIMATION,
@@ -251,6 +257,13 @@ const HomePage = () => {
         driverData={driverData}
       />
       
+      {/* Toggle View Button */}
+      <div className="toggle-container">
+        <button className="toggle-view-btn" onClick={toggleView}>
+          Switch to Simple View
+        </button>
+      </div>
+      
       {showSignInModal && (
         <SignInModal
           onClose={handleAuthModalClose}
@@ -328,60 +341,55 @@ const HomePage = () => {
           </div>
         </div>
 
-        {/* Split canvas section - positioned correctly before driver login section */}
-     {/* Split canvas section with 3D models and driver login */}
-{/* Split canvas section with 3D models and driver login */}
-{/* Split canvas section with 3D models and driver login */}
-<div className="split-canvas-container">
-  <div className="split-canvas">
-    {/* Left side - Truck model with driver login */}
-    <div className="split-canvas-left">
-      <TruckModelContainer />
-      
-      {/* Driver login section - updated styling */}
-      <div className="driver-login-container mt-8 text-center pb-8">
-        <p className="text-gray-300 mb-3">Are you a delivery partner?</p>
-        {isDriverLoading ? (
-          <div className="flex justify-center">
-            <p>Loading...</p>
+        {/* Split canvas section with 3D models and driver login */}
+        <div className="split-canvas-container">
+          <div className="split-canvas">
+            {/* Left side - Truck model with driver login */}
+            <div className="split-canvas-left">
+              <TruckModelContainer />
+              
+              {/* Driver login section - updated styling */}
+              <div className="driver-login-container mt-8 text-center pb-8">
+                <p className="text-gray-300 mb-3">Are you a delivery partner?</p>
+                {isDriverLoading ? (
+                  <div className="flex justify-center">
+                    <p>Loading...</p>
+                  </div>
+                ) : isDriverAuthenticated ? (
+                  <div className="flex justify-center">
+                    <a 
+                      href="/driver" 
+                      className="driver-button primary"
+                    >
+                      Go to Driver Dashboard
+                    </a>
+                  </div>
+                ) : (
+                  <div className="flex justify-center space-x-8">
+                    <button 
+                      onClick={() => setShowDriverSignInModal(true)}
+                      className="driver-button"
+                    >
+                      Login as Driver
+                    </button>
+                    <button 
+                      onClick={() => setShowDriverSignUpModal(true)}
+                      className="driver-button primary"
+                    >
+                      Become a Driver
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Right side - Food model that changes on hover */}
+            <div className="split-canvas-right">
+              <FoodModelContainer />
+            </div>
           </div>
-        ) : isDriverAuthenticated ? (
-          <div className="flex justify-center">
-            <a 
-              href="/driver" 
-              className="driver-button primary"
-            >
-              Go to Driver Dashboard
-            </a>
-          </div>
-        ) : (
-          <div className="flex justify-center space-x-8">
-            <button 
-              onClick={() => setShowDriverSignInModal(true)}
-              className="driver-button"
-            >
-              Login as Driver
-            </button>
-            <button 
-              onClick={() => setShowDriverSignUpModal(true)}
-              className="driver-button primary"
-            >
-              Become a Driver
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-    
-    {/* Right side - Food model that changes on hover */}
-    <div className="split-canvas-right">
-      <FoodModelContainer />
-    </div>
-  </div>
-</div>
+        </div>
       </section>
-      
-  
     </div>
   );
 };

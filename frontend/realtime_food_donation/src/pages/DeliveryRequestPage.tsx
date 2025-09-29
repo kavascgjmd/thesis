@@ -46,7 +46,7 @@ const DeliveryRequestsPage = () => {
   const fetchOrders = async () => {
     try {
       // Updated to filter for pending orders with confirmed payment
-      const response = await axios.get('http://localhost:3000/api/orders?status=pending&paymentStatus=confirmed', {
+      const response = await axios.get('http://localhost:3000/api/orders?status=in_progress&paymentStatus=confirmed', {
         withCredentials: true
       });
       

@@ -541,25 +541,25 @@ class OrderService {
     }
   }
 
-  async getAllOrders(status?: string, driverId?: number, paymentStatus?: string): Promise<any[]> {
+  async getAllOrders(status?: string, driverId?: number, paymentStatus?: string): Promise<any> {
     try {
       let sqlQuery = `
-      SELECT 
-        o.id, o.cart_id, o.user_id, o.order_status, o.payment_status,
-        o.payment_method, o.delivery_fee, o.total_amount,
-        o.delivery_address, o.created_at, o.order_notes,
-        d.id as delivery_id, d.driver_id, d.delivery_status,
-        u.username as username,
-        dr.username as driver_username,
-        COUNT(ci.id) as item_count
-      FROM orders o
-      LEFT JOIN deliveries d ON d.request_id = o.id
-      LEFT JOIN users u ON o.user_id = u.id
-      LEFT JOIN drivers dr ON d.driver_id = dr.id
-      LEFT JOIN carts c ON o.cart_id = c.id
-      LEFT JOIN cart_items ci ON ci.cart_id = c.id
-      WHERE 1=1
-    `;
+        SELECT 
+          o.id, o.cart_id, o.user_id, o.order_status, o.payment_status,
+          o.payment_method, o.delivery_fee, o.total_amount,
+          o.delivery_address, o.created_at, o.order_notes,
+          d.id as delivery_id, d.driver_id, d.delivery_status,
+          u.username as username,
+          dr.username as driver_username,
+          COUNT(ci.id) as item_count
+        FROM orders o
+        LEFT JOIN deliveries d ON d.request_id = o.id
+        LEFT JOIN users u ON o.user_id = u.id
+        LEFT JOIN drivers dr ON d.driver_id = dr.id
+        LEFT JOIN carts c ON o.cart_id = c.id
+        LEFT JOIN cart_items ci ON ci.cart_id = c.id
+        WHERE 1=1
+      `;
       
       const params: any[] = [];
       let paramIndex = 1;
@@ -569,17 +569,21 @@ class OrderService {
         params.push(status);
         paramIndex++;
       }
-    
+      
       if (paymentStatus) {
         sqlQuery += ` AND o.payment_status = $${paramIndex}`;
         params.push(paymentStatus);
         paramIndex++;
       }
-    
-      if (driverId && status !== 'pending') {
-        sqlQuery += ` AND d.driver_id = $${paramIndex}`;
-        params.push(driverId);
-        paramIndex++;
+      
+      // Modified this condition to handle driver filtering correctly
+      if (driverId) {
+        if (status !== 'pending') {
+          // Only filter by driver if not pending
+          sqlQuery += ` AND (d.driver_id = $${paramIndex} OR d.driver_id IS NULL)`;
+          params.push(driverId);
+          paramIndex++;
+        }
       }
       
       sqlQuery += `

@@ -12,6 +12,8 @@ import foodRoutes from './routes/food';
 import cartRoutes from './routes/cart';
 import orderRoutes from './routes/order';
 import driverRoutes from './routes/driver';
+import foodAllocationRoutes from './routes/food-allocation-milp';
+import { scheduledAllocation } from './routes/food-allocation-milp';
 
 const app = express();
 
@@ -36,6 +38,7 @@ app.use('/api/foods', foodRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/driver', driverRoutes);
+app.use('/api/food', foodAllocationRoutes);
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     console.error(err.stack);
     res.status(500).json({ status: 'error', message: 'Internal Server Error' });

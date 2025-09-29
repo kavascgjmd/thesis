@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
+import SimpleHomePage from './pages/SimpleHomepage';
 import { UserProfile } from './components/profile/UserProfile';
+import { DonorFoodDonations } from './components/profile/DonorFoodDonation';
 // import { DriverProfile } from './components/profile/DriverProfile';
 import ProtectedRoute from './ProtectedRoute';
 import { useAuthStatus } from './hooks/useAuthStatus';
+import { useDriverAuth } from './hooks/useDriverAuth';
 import './App.css';
 import FoodListingPage from './pages/FoodListingPage';
 import FoodDetailPage from './pages/FoodDetailPage';
@@ -15,18 +18,18 @@ import ActiveDeliveryPage from './pages/ActiveDeliveryPage';
 import DeliveryHistory from './pages/DeliveryHistory';
 import EarningsPage from './pages/EarningPages';
 
-// Custom hook for driver authentication
-const useDriverAuth = () => {
-  const [isDriverAuthenticated, setIsDriverAuthenticated] = useState<boolean>(
-    localStorage.getItem('driverToken') ? true : false
-  );
-  const [isDriverLoading, setIsDriverLoading] = useState<boolean>(false);
+const HomePageToggle: React.FC = () => {
+  const [showSimpleView, setShowSimpleView] = useState<boolean>(true);
   
-  return {
-    isDriverAuthenticated,
-    setIsDriverAuthenticated,
-    isDriverLoading
+  const toggleView = () => {
+    setShowSimpleView(!showSimpleView);
   };
+  
+  return showSimpleView ? (
+    <SimpleHomePage toggleView={toggleView} />
+  ) : (
+    <HomePage toggleView={toggleView} />
+  );
 };
 
 const App: React.FC = () => {
@@ -36,8 +39,8 @@ const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<HomePage />} />
+        {/* Public Routes - Using our toggle component for the homepage */}
+        <Route path="/" element={<HomePageToggle />} />
         <Route path="/food" element={<FoodListingPage />} />
         <Route path="/food/:id" element={<FoodDetailPage />} />
 
@@ -53,7 +56,7 @@ const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
-
+         <Route path="/donor/food-donations" element={<DonorFoodDonations />} />
         <Route
           path="/payment/:orderId"
           element={
@@ -78,18 +81,6 @@ const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
-
-        {/* <Route
-          path="/driver/profile"
-          element={
-            <ProtectedRoute
-              isAuthenticated={isDriverAuthenticated}
-              isLoading={isDriverLoading}
-            >
-              <DriverProfile />
-            </ProtectedRoute>
-          }
-        /> */}
 
         <Route
           path="/driver/requests"

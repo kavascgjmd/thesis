@@ -9,7 +9,7 @@ import { Input } from '../components/ui/input/Input';
 import { Label } from '../components/ui/label/Label';
 import { GoogleMapsAutocomplete } from '../components/GoogleMapsAutocomplete';
 import { RadioGroup, RadioGroupItem } from '../components/ui/alert/RadioGroup';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select/Select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select/Select2';
 import { Switch } from '../components/ui/switch/Switch';
 
 // List of predefined food types

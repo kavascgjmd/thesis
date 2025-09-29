@@ -133,12 +133,28 @@ export const useProfile = () => {
           }
         }
       }
+      const numericFields = ['storage_capacity_kg', 'vehicle_capacity_kg', 'priority_level', 'latitude', 'longitude'];
+    
+      for (const field of numericFields) {
+        if (field in mergedDetails && mergedDetails[field as keyof RoleSpecificDetails] !== null && 
+            mergedDetails[field as keyof RoleSpecificDetails] !== undefined) {
+          // Ensure numeric values are actually numbers
+          const currentValue = mergedDetails[field as keyof RoleSpecificDetails];
+          if (typeof currentValue === 'string') {
+            const parsedValue = parseFloat(currentValue as string);
+            if (!isNaN(parsedValue)) {
+              mergedDetails[field as keyof RoleSpecificDetails] = parsedValue;
+            }
+          }
+        }
+      }
+  
       const res = await axios.put(
         `${BASE_URL}/api/profile/role-details`,
         mergedDetails,
         { withCredentials: true }
       );
-
+  
       if (res.data.success) {
         setRoleDetails(prev => ({ ...prev, ...res.data.details }));
         await fetchProfile();

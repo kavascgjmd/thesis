@@ -1,0 +1,80 @@
+# Food Donation Routes Documentation
+
+## Base URL: `/api/food`
+
+### Authentication:
+- All routes except GET require donor authentication (JWT token in header)
+
+### Routes:
+
+1. **GET /**
+   - Get all available food donations
+   - Returns: Array of food donations with donor info
+   - Filters: Only returns available, non-expired donations
+
+2. **GET /:id**
+   - Get specific food donation details
+   - Returns: Detailed food info + donor contact info
+
+3. **POST /**
+   - Create new food donation (donors only)
+   - Input: 
+     ```typescript
+     {
+       // Common fields
+       food_type: string,
+       food_category: 'Cooked Meal'|'Raw Ingredients'|'Packaged Items',
+       event_is_over: boolean,
+       expiration_time: Date,
+       pickup_location: string,
+       availability_schedule: string,
+       image?: string,
+       
+       // Leftover food fields (when event_is_over=true)
+       servings?: number,        // Cooked meals
+       weight_kg?: number,       // Raw ingredients
+       quantity?: number,        // Packaged items
+       package_size?: string,    // Packaged items
+       
+       // Event fields (when event_is_over=false)
+       total_quantity?: number,
+       event_type?: 'Wedding'|'Birthday'|'Social Gathering'|'Corporate Gathering',
+       preparation_method?: 'Buffet'|'Sit-down Dinner',
+       pricing?: 'High'|'Low'|'Moderate',
+       number_of_guests?: number
+     }
+     ```
+   - Features:
+     - For upcoming events, predicts food waste using ML model
+     - Triggers automatic allocation after creation
+   - Returns: Created food donation
+
+4. **PUT /:id**
+   - Update food donation (donors only)
+   - Input: Partial fields from POST schema
+   - Features:
+     - For upcoming events, re-predicts food waste
+     - Triggers automatic allocation after update
+   - Returns: Updated food donation
+
+5. **DELETE /:id**
+   - Delete food donation (donors only)
+   - Features: Triggers automatic allocation after deletion
+   - Returns: Success message
+
+### Key Features:
+- Event vs. leftover food distinction
+- Food waste prediction for upcoming events
+- Automatic allocation triggering
+- Location classification (Urban/Rural/Suburban)
+- Comprehensive validation with Zod
+- Donor verification for write operations
+
+### Response Structure:
+```json
+{
+  "success": boolean,
+  "message": string,
+  "data": {...} // route-specific
+  "errors": [...] // when validation fails
+}

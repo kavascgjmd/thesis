@@ -1,0 +1,348 @@
+/* SimpleHomepage.css */
+
+/* Base Styles */
+.simple-homepage {
+    font-family: sans-serif;
+    color: #333;
+    line-height: 1.6;
+  }
+  
+  .section-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+  
+  h1, h2, h3, h4 {
+    margin-top: 0;
+    font-weight: 700;
+  }
+  
+  /* Toggle Button */
+  .toggle-container {
+    position: fixed;
+    left: 20px;
+    top: 70px;
+    z-index: 100;
+  }
+  
+  .toggle-view-btn {
+    background-color: #1a1a2e;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .toggle-view-btn:hover {
+    background-color: #333;
+  }
+  
+  /* Hero Section */
+  .hero-section {
+    background-color: #1a1a2e;
+    color: white;
+    padding: 120px 0;
+    text-align: center;
+    position: relative;
+  }
+  
+  .hero-content {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  .hero-section h1 {
+    font-size: 3.5rem;
+    margin-bottom: 20px;
+    letter-spacing: -1px;
+  }
+  
+  .hero-section p {
+    font-size: 1.2rem;
+    margin-bottom: 30px;
+    opacity: 0.9;
+  }
+  
+  .hero-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+  }
+  
+  .primary-btn, .secondary-btn {
+    display: inline-block;
+    padding: 12px 25px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s;
+  }
+  
+  .primary-btn {
+    background-color: white;
+    color: #1a1a2e;
+  }
+  
+  .secondary-btn {
+    background-color: transparent;
+    color: white;
+    border: 2px solid white;
+  }
+  
+  .primary-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  
+  .secondary-btn:hover {
+    background-color: rgba(255,255,255,0.1);
+  }
+  
+  /* About Section */
+  .about-section {
+    padding: 100px 0;
+    background-color: #f8f8f8;
+  }
+  
+  .about-section h2 {
+    font-size: 5rem;
+    margin-bottom: 40px;
+    color: #1a1a2e;
+    letter-spacing: -2px;
+  }
+  
+  .about-content {
+    display: flex;
+    gap: 50px;
+    align-items: center;
+  }
+  
+  .about-text {
+    flex: 1;
+  }
+  
+  .about-text p {
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+  }
+  
+  .about-image {
+    flex: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 6px 30px rgba(0,0,0,0.1);
+  }
+  
+  .about-image img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  
+  /* Services Section */
+  .services-section {
+    padding: 100px 0;
+    background-color: white;
+  }
+  
+  .services-section h2 {
+    font-size: 2.5rem;
+    text-align: center;
+    margin-bottom: 60px;
+    color: #1a1a2e;
+  }
+  
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+  }
+  
+  .service-card {
+    background-color: #fff;
+    padding: 40px 30px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    transition: transform 0.3s;
+  }
+  
+  .service-card:hover {
+    transform: translateY(-10px);
+  }
+  
+  .service-icon {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+  }
+  
+  .service-card h3 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    color: #1a1a2e;
+  }
+  
+  .driver-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 15px;
+  }
+  
+  .driver-buttons button {
+    padding: 8px 15px;
+    border: none;
+    background-color: #1a1a2e;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .driver-buttons button:hover {
+    background-color: #333;
+  }
+  
+  .driver-link {
+    display: inline-block;
+    margin-top: 15px;
+    padding: 8px 15px;
+    background-color: #1a1a2e;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+  }
+  
+  .driver-link:hover {
+    background-color: #333;
+  }
+  
+  /* Call to Action Section */
+  .cta-section {
+    padding: 80px 0;
+    background-color: #1a1a2e;
+    color: white;
+    text-align: center;
+  }
+  
+  .cta-section h2 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+  }
+  
+  .cta-section p {
+    font-size: 1.2rem;
+    margin-bottom: 30px;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  .cta-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+  }
+  
+  /* Footer */
+  .footer {
+    background-color: #121212;
+    color: #ccc;
+    padding: 70px 0 20px;
+  }
+  
+  .footer-content {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 50px;
+  }
+  
+  .footer-logo {
+    max-width: 250px;
+  }
+  
+  .footer-logo h3 {
+    color: white;
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+  }
+  
+  .footer-links {
+    display: flex;
+    gap: 60px;
+  }
+  
+  .footer-column h4 {
+    color: white;
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+  }
+  
+  .footer-column ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .footer-column ul li {
+    margin-bottom: 10px;
+  }
+  
+  .footer-column ul li a {
+    color: #ccc;
+    text-decoration: none;
+    transition: color 0.3s;
+  }
+  
+  .footer-column ul li a:hover {
+    color: white;
+  }
+  
+  .footer-bottom {
+    padding-top: 20px;
+    border-top: 1px solid #333;
+    text-align: center;
+    font-size: 0.9rem;
+  }
+  
+  /* Responsive */
+  @media (max-width: 992px) {
+    .about-content {
+      flex-direction: column;
+    }
+    
+    .footer-content {
+      flex-direction: column;
+      gap: 40px;
+    }
+    
+    .footer-links {
+      flex-wrap: wrap;
+      gap: 30px;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .hero-section h1 {
+      font-size: 2.5rem;
+    }
+    
+    .about-section h2 {
+      font-size: 3rem;
+    }
+    
+    .hero-buttons, .cta-buttons {
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .primary-btn, .secondary-btn {
+      width: 100%;
+      text-align: center;
+    }
+  }

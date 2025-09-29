@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert/Aler
 import { Card } from '../components/ui/card/Card';
 import { Button } from '../components/ui/button/Button';
 import OrderTracking from './OrderTracking';
+import KommunicateChat from '../components/chat';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -344,6 +345,7 @@ const PaymentConfirmationPage: React.FC = () => {
           {renderOrderItems()}
         </>
       )}
+      <KommunicateChat />
     </div>
   );
 };

@@ -94,6 +94,7 @@ router.get('/', driverAuthMiddleware, async (req: Request, res: Response): Promi
     
     const status = req.query.status as string | undefined;
     const paymentStatus = req.query.paymentStatus as string | undefined;
+  
     
     // Handle comma-separated status values
     if (status && status.includes(',')) {

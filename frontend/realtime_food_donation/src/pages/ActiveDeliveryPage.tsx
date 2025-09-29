@@ -6,7 +6,7 @@ import axios from 'axios';
 import DeliveryMap from './DriverDeliveryMap'; // Import the new component
 
 // USD to INR conversion rate
-const USD_TO_INR_RATE = 83.5; // Example conversion rate (1 USD = 83.5 INR)
+const USD_TO_INR_RATE = 84; // Example conversion rate (1 USD = 83.5 INR)
 
 // Helper function to convert USD to INR
 const convertToINR = (amountInUSD) => {

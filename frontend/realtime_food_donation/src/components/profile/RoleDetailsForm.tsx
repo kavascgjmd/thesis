@@ -32,6 +32,11 @@ interface NgoDetails {
   fcra_certificate?: string
   tax_exemption_certificate?: string
   annual_reports_link?: string
+  storage_capacity_kg?: number
+  vehicle_capacity_kg?: number
+  priority_level?: number
+  // Array fields
+  food_preferences?: string[]
 }
 
 interface RecipientDetails {
@@ -105,20 +110,41 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
     return ''
   }
 
+
+  const shouldBeNumber = (field: string): boolean => {
+    const numericFields = [
+      'storage_capacity_kg', 
+      'vehicle_capacity_kg', 
+      'priority_level', 
+      'latitude', 
+      'longitude'
+    ];
+    return numericFields.includes(field);
+  }
   // Update handle field change to use snake_case keys
-  const handleFieldChange = (field: string, value: string) => {
+  const handleFieldChange = (field: string, value: string | string[]) => {
     // Convert camelCase field name to snake_case
     const snakeField = camelToSnakeCase(field);
+    
+    // Determine if this field should be stored as a number
+    let processedValue: string | number | string[] = value;
+    
+    if (typeof value === 'string') {
+      const error = validateField(snakeField, value);
+      setErrors(prev => ({
+        ...prev,
+        [snakeField]: error
+      }));
+      
+      // Convert string to number for numeric fields
+      if (shouldBeNumber(snakeField) && value !== '') {
+        processedValue = parseFloat(value);
+      }
+    }
 
-    const error = validateField(snakeField, value)
-    setErrors(prev => ({
-      ...prev,
-      [snakeField]: error
-    }))
-
-    // Update the form state with snake_case keys
-    const update = { [snakeField]: value };
-    onUpdateDetails({ ...details, ...update })
+    // Update the form state with snake_case keys and properly typed values
+    const update = { [snakeField]: processedValue };
+    onUpdateDetails({ ...details, ...update });
   }
   const DocumentUploadStatus = ({ documentType, verificationStatus }) => {
     const isPending = verificationStatus && !verificationStatus.is_verified;
@@ -319,7 +345,7 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
             )}
           </div>
         )}
-
+  
         <div className="max-h-[70vh] overflow-y-auto pr-2 mb-4">
           <div className="grid gap-2">
             <label className="text-sm font-medium">NGO Name *</label>
@@ -377,14 +403,88 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
               rows={3}
             />
           </div>
-
+  
+          {/* New capacity and preferences section */}
+          <div className="mt-6 border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4">Capacity & Preferences</h3>
+            
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Storage Capacity (kg)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={getValue('storageCapacityKg') || ''}
+                  onChange={(e) => handleFieldChange('storageCapacityKg', e.target.value)}
+                  disabled={isSubmitting}
+                  placeholder="Enter your maximum storage capacity"
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Vehicle Capacity (kg)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={getValue('vehicleCapacityKg') || ''}
+                  onChange={(e) => handleFieldChange('vehicleCapacityKg', e.target.value)}
+                  disabled={isSubmitting}
+                  placeholder="Enter your vehicle transport capacity"
+                />
+              </div>
+            </div>
+  
+            <div className="grid gap-2 mt-4">
+              <label className="text-sm font-medium">Food Preferences</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['Baked Goods', 'Dairy Products', 'Fruits', 'Meat', 'Vegetables', 'South Indian Breakfast', 'Snack', 'Rice and Biryani Dishes', 'Other'].map((preference) => (
+                  <div key={preference} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id={`pref-${preference}`}
+                      checked={Array.isArray(getValue('foodPreferences')) && getValue('foodPreferences').includes(preference)}
+                      onChange={(e) => {
+                        const currentPrefs = Array.isArray(getValue('foodPreferences')) ? [...getValue('foodPreferences')] : [];
+                        if (e.target.checked) {
+                          handleFieldChange('foodPreferences', [...currentPrefs, preference]);
+                        } else {
+                          handleFieldChange('foodPreferences', currentPrefs.filter(pref => pref !== preference));
+                        }
+                      }}
+                      disabled={isSubmitting}
+                      className="mr-2"
+                    />
+                    <label htmlFor={`pref-${preference}`} className="text-sm">{preference}</label>
+                  </div>
+                ))}
+              </div>
+            </div>
+  
+            <div className="grid gap-2 mt-4">
+              <label className="text-sm font-medium">Priority Level</label>
+              <Select
+                value={getValue('priorityLevel') || '1'}
+                onChange={(e) => handleFieldChange('priorityLevel', e.target.value)}
+                disabled={isSubmitting}
+              >
+                <option value="1">Low (1)</option>
+                <option value="2">Medium (2)</option>
+                <option value="3">High (3)</option>
+                <option value="4">Critical (4)</option>
+                <option value="5">Emergency (5)</option>
+              </Select>
+              <p className="text-xs text-gray-500">Higher priority levels may receive donations first during high demand periods.</p>
+            </div>
+          </div>
+  
           {/* Verification Section */}
           <div className="mt-6 border-t pt-6">
             <h3 className="text-lg font-semibold mb-4">Verification Documents</h3>
             <p className="text-sm text-gray-600 mb-4">
               Please provide the following documents for verification. Your account will be verified by an administrator.
             </p>
-
+  
             <div className="grid gap-6">
               <div className="grid gap-2">
                 <label className="text-sm font-medium">NGO Type</label>
@@ -400,7 +500,7 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
                   <option value="OTHER">Other</option>
                 </Select>
               </div>
-
+  
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">Registration Number</label>
@@ -431,7 +531,7 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
                   )}
                 </div>
               </div>
-
+  
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">PAN Number</label>
@@ -462,7 +562,7 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
                   )}
                 </div>
               </div>
-
+  
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">FCRA Number (if applicable)</label>
@@ -493,7 +593,7 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
                   )}
                 </div>
               </div>
-
+  
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Tax Exemption Certificate (if applicable)</label>
                 <FileUpload
@@ -506,8 +606,14 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
                     ? getValue('taxExemptionCertificate')
                     : undefined}
                 />
+                {getValue('taxExemptionCertificate') && (
+                  <DocumentUploadStatus
+                    documentType="taxExemptionCertificate"
+                    verificationStatus={verificationStatus}
+                  />
+                )}
               </div>
-
+  
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Annual Reports Link (if applicable)</label>
                 <Input
@@ -520,7 +626,7 @@ export const RoleDetailsForm: React.FC<RoleDetailsFormProps> = ({
             </div>
           </div>
         </div>
-
+  
         {!preventSubmit && (
           <button
             type="submit"

@@ -1,0 +1,94 @@
+# Driver API
+
+This API manages driver profiles and related operations for a delivery service platform. It provides endpoints to retrieve, update, and manage driver information, location, and availability status.
+
+## Routes
+
+### Get Driver Profile
+- **Endpoint**: `GET /`
+- **Authentication**: Required
+- **Description**: Retrieves the complete profile of the authenticated driver
+- **Response**: Driver profile object including vehicle details, service area, status, and other information
+
+### Update Driver Details
+- **Endpoint**: `PUT /details`
+- **Authentication**: Required
+- **Description**: Updates the driver's profile information
+- **Request Body**:
+  ```json
+  {
+    "vehicle_type": "Car",
+    "vehicle_number": "ABC123",
+    "license_number": "DL12345",
+    "service_area": "Downtown",
+    "max_delivery_distance": 10,
+    "availability_status": "ONLINE", // Optional
+    "address": "123 Main St", // Optional
+    "profile_picture": "url_to_image" // Optional
+  }
+  ```
+- **Response**: Updated driver details
+
+### Update Driver Location
+- **Endpoint**: `PUT /location`
+- **Authentication**: Required
+- **Description**: Updates the driver's current location
+- **Request Body**:
+  ```json
+  {
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  }
+  ```
+- **Response**: Confirmation with updated location information
+
+### Update Availability Status
+- **Endpoint**: `PUT /status`
+- **Authentication**: Required
+- **Description**: Updates the driver's availability status
+- **Request Body**:
+  ```json
+  {
+    "status": "ONLINE" // Options: "ONLINE", "OFFLINE", "ON_DELIVERY"
+  }
+  ```
+- **Response**: Confirmation with updated status
+
+### Calculate Profile Completion
+- **Endpoint**: `GET /completion`
+- **Authentication**: Required
+- **Description**: Calculates the completion percentage of the driver's profile
+- **Response**: Percentage value representing profile completeness
+
+## Models
+
+### Driver
+- `id`: Unique identifier
+- `username`: Driver's username
+- `email`: Driver's email address
+- `phone`: Contact number
+- `address`: Physical address (optional)
+- `profile_picture`: URL to profile image (optional)
+- `vehicle_type`: Type of vehicle used for deliveries
+- `vehicle_number`: Vehicle registration number
+- `license_number`: Driver's license number
+- `availability_status`: Current status (ONLINE/OFFLINE/ON_DELIVERY)
+- `service_area`: Geographic area served
+- `max_delivery_distance`: Maximum delivery distance in kilometers/miles
+- `rating`: Driver's performance rating
+- `total_deliveries`: Count of completed deliveries
+- `current_location`: Geographic coordinates (latitude, longitude)
+- `created_at`: Account creation timestamp
+- `updated_at`: Last update timestamp
+
+## Authentication
+
+This API uses token-based authentication via the `authMiddleware`. All endpoints require a valid authentication token that identifies the driver.
+
+## Validation
+
+Input validation is performed using Zod schema validation to ensure data integrity.
+
+## Error Handling
+
+All endpoints include proper error handling with appropriate HTTP status codes and descriptive error messages.

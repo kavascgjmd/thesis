@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS food_donations (
     preparation_method VARCHAR(50),
     pricing VARCHAR(20),
     total_quantity DECIMAL(10,2),
-    number_of_guests INTEGER
+    number_of_guests INTEGER,
+    remaining_quantity DECIMAL(10,2)
 );
   `;
   

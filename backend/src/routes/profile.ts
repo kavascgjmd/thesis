@@ -10,6 +10,7 @@ import s3Service from '../services/s3Service';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 const router = Router();
+import mapService from '../services/mapService'; 
 
 // Configure email transporter
 const transporter = nodemailer.createTransport({
@@ -60,7 +61,7 @@ const donorDetailsSchema = z.object({
   operating_hours: z.string().max(255)
 });
 
-// Updated NGO schema with new verification fields
+// Updated NGO schema with all new fields from the database
 const ngoDetailsSchema = z.object({
   ngo_name: z.string().max(255),
   mission_statement: z.string(),
@@ -68,16 +69,31 @@ const ngoDetailsSchema = z.object({
   contact_number: z.string().max(50),
   operating_hours: z.string().max(255),
   target_demographics: z.string(),
-  // New fields from the updated schema
+  // Original verification fields
   ngo_type: z.string().max(50).optional().nullable(),
   registration_number: z.string().max(100).optional().nullable(),
-  registration_certificate: z.string().max(255).optional().nullable(),
+  registration_certificate: z.string().optional().nullable(),
+  registration_certificate_url: z.string().max(255).optional().nullable(),
+  registration_certificate_storage: z.string().max(50).optional().nullable(),
   pan_number: z.string().max(20).optional().nullable(),
-  pan_card_image: z.string().max(255).optional().nullable(),
+  pan_card_image: z.string().optional().nullable(),
+  pan_card_image_url: z.string().max(255).optional().nullable(),
+  pan_card_image_storage: z.string().max(50).optional().nullable(),
   fcra_number: z.string().max(100).optional().nullable(),
-  fcra_certificate: z.string().max(255).optional().nullable(),
-  tax_exemption_certificate: z.string().max(255).optional().nullable(),
-  annual_reports_link: z.string().max(255).optional().nullable()
+  fcra_certificate: z.string().optional().nullable(),
+  fcra_certificate_url: z.string().max(255).optional().nullable(),
+  fcra_certificate_storage: z.string().max(50).optional().nullable(),
+  tax_exemption_certificate: z.string().optional().nullable(),
+  tax_exemption_certificate_url: z.string().max(255).optional().nullable(),
+  tax_exemption_certificate_storage: z.string().max(50).optional().nullable(),
+  annual_reports_link: z.string().max(255).optional().nullable(),
+  // New capacity and location fields
+  storage_capacity_kg: z.number().optional().nullable(),
+  latitude: z.number().optional().nullable(),
+  longitude: z.number().optional().nullable(),
+  vehicle_capacity_kg: z.number().optional().nullable(),
+  food_preferences: z.array(z.string()).optional().nullable(),
+  priority_level: z.number().optional().nullable()
 });
 
 // Updated recipient schema with new verification fields
@@ -110,9 +126,9 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<any
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
 
@@ -122,9 +138,9 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<any
     );
 
     if (!userQuery.rows[0]) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'User not found' 
+        message: 'User not found'
       });
     }
 
@@ -142,7 +158,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<any
       const roleQuery = await query('SELECT * FROM recipients WHERE user_id = $1', [user.id]);
       roleDetails = roleQuery.rows[0];
     }
-    
+
     return res.status(200).json({
       success: true,
       user: userData,
@@ -151,9 +167,9 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<any
 
   } catch (error) {
     console.error('Error fetching profile:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to fetch profile' 
+      message: 'Failed to fetch profile'
     });
   }
 });
@@ -162,12 +178,12 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-    
+
     const validationResult = basicProfileSchema.safeParse(req.body);
     if (!validationResult.success) {
       return res.status(400).json({
@@ -193,8 +209,8 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
     }
 
     // Only check conflicts if username or email is changing
-    const needsConflictCheck = 
-      username !== currentUser.rows[0].username || 
+    const needsConflictCheck =
+      username !== currentUser.rows[0].username ||
       email !== currentUser.rows[0].email;
 
     if (needsConflictCheck) {
@@ -223,7 +239,7 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
     // Create entry in role-specific table if it doesn't exist yet
     // This ensures the user has a record to update when filling role details
     const role = currentUser.rows[0].role.toUpperCase();
-    
+
     if (role === 'DONOR') {
       const existingDonor = await query('SELECT * FROM donors WHERE user_id = $1', [user.id]);
       if (existingDonor.rows.length === 0) {
@@ -235,7 +251,9 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
         );
       }
     } else if (role === 'NGO') {
+      // For NGO, also calculate latitude and longitude using MapService if address is provided
       const existingNGO = await query('SELECT * FROM ngos WHERE user_id = $1', [user.id]);
+      
       if (existingNGO.rows.length === 0) {
         // Create initial NGO record
         await query(
@@ -243,6 +261,26 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
            VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
           [user.id]
         );
+      }
+      
+      // If address is provided, use MapService to get coordinates
+      if (address) {
+        try {
+          const locationData = await mapService.getCoordinates(address);
+          
+          // Update NGO record with the new coordinates
+          await query(
+            `UPDATE ngos 
+             SET latitude = $1, longitude = $2, updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = $3`,
+            [locationData.lat, locationData.lng, user.id]
+          );
+          
+          console.log(`Updated coordinates for NGO (user_id: ${user.id}): lat=${locationData.lat}, lng=${locationData.lng}`);
+        } catch (geoError) {
+          console.error('Failed to get coordinates for NGO address:', geoError);
+          // Continue without coordinates - this is not a critical error
+        }
       }
     } else if (role === 'RECIPIENT') {
       const existingRecipient = await query('SELECT * FROM recipients WHERE user_id = $1', [user.id]);
@@ -264,7 +302,7 @@ router.put('/basic', authMiddleware, async (req: Request, res: Response): Promis
 
   } catch (error) {
     console.error('Error updating profile:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
       message: 'Failed to update profile',
     });
@@ -275,20 +313,20 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
   try {
     const user = req.user as UserPayload;
     if (!user?.id || !user?.role) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-  
+
 
     // Define type union for validation results
-    type ValidationResult = 
-      | { success: true; data: DonorDetailsData } 
+    type ValidationResult =
+      | { success: true; data: DonorDetailsData }
       | { success: true; data: NGODetailsData }
       | { success: true; data: RecipientDetailsData }
       | { success: false; error: z.ZodError };
-    
+
     let validationResult: ValidationResult | null = null;
     let existingRecord: RoleQueryResult | null = null;
     let updateQuery: any = null;
@@ -304,9 +342,9 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
 
         validationResult = donorDetailsSchema.safeParse(req.body) as ValidationResult;
         if (validationResult.success) {
-          const { donor_type, organization_name, organization_details, 
-                 contact_person, contact_number, operating_hours } = validationResult.data as DonorDetailsData;
-          
+          const { donor_type, organization_name, organization_details,
+            contact_person, contact_number, operating_hours } = validationResult.data as DonorDetailsData;
+
           if (!existingRecord.rows.length) {
             // Insert new record
             updateQuery = await query(
@@ -315,7 +353,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
                VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                RETURNING *`,
               [user.id, donor_type, organization_name, organization_details,
-               contact_person, contact_number, operating_hours]
+                contact_person, contact_number, operating_hours]
             );
           } else {
             // Update existing record
@@ -327,7 +365,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
                WHERE user_id = $1
                RETURNING *`,
               [user.id, donor_type, organization_name, organization_details,
-               contact_person, contact_number, operating_hours]
+                contact_person, contact_number, operating_hours]
             );
           }
         }
@@ -339,76 +377,95 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           'SELECT * FROM ngos WHERE user_id = $1',
           [user.id]
         );
-         
+
         validationResult = ngoDetailsSchema.safeParse(req.body) as ValidationResult;
         if (validationResult.success) {
           const ngoData = validationResult.data as NGODetailsData;
-          const { 
-            ngo_name, mission_statement, contact_person, contact_number, 
+          const {
+            ngo_name, mission_statement, contact_person, contact_number,
             operating_hours, target_demographics, ngo_type, registration_number,
-            registration_certificate, pan_number, pan_card_image, fcra_number,
-            fcra_certificate, tax_exemption_certificate, annual_reports_link
+            registration_certificate, registration_certificate_url, registration_certificate_storage,
+            pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage,
+            fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage,
+            tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage,
+            annual_reports_link, storage_capacity_kg, latitude, longitude,
+            vehicle_capacity_kg, food_preferences, priority_level
           } = ngoData;
-      
 
           // Check if this is a new entry or substantial update that requires verification
           if (!existingRecord.rows.length) {
             verificationNeeded = true;
-            // Insert new record
+            // Insert new record with all fields
             updateQuery = await query(
               `INSERT INTO ngos (
-                user_id, ngo_name, mission_statement, contact_person, contact_number, 
-                operating_hours, target_demographics, ngo_type, registration_number, 
-                registration_certificate, pan_number, pan_card_image, fcra_number, 
-                fcra_certificate, tax_exemption_certificate, annual_reports_link,
-                is_verified, created_at, updated_at
-              )
-              VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-              )
-              RETURNING *`,
+                  user_id, ngo_name, mission_statement, contact_person, contact_number, 
+                  operating_hours, target_demographics, ngo_type, registration_number, 
+                  registration_certificate, registration_certificate_url, registration_certificate_storage,
+                  pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage,
+                  fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage,
+                  tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage,
+                  annual_reports_link, storage_capacity_kg, latitude, longitude,
+                  vehicle_capacity_kg, food_preferences, priority_level,
+                  is_verified, created_at, updated_at
+                )
+                VALUES (
+                  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+                  $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+                  FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                RETURNING *`,
               [
                 user.id, ngo_name, mission_statement, contact_person, contact_number,
                 operating_hours, target_demographics, ngo_type, registration_number,
-                registration_certificate, pan_number, pan_card_image, fcra_number,
-                fcra_certificate, tax_exemption_certificate, annual_reports_link
+                registration_certificate, registration_certificate_url, registration_certificate_storage,
+                pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage,
+                fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage,
+                tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage,
+                annual_reports_link, storage_capacity_kg, latitude, longitude,
+                vehicle_capacity_kg, food_preferences, priority_level
               ]
             );
           } else {
             // Check if verification fields have changed
             const criticalFields = [
-              'registration_number', 'pan_number', 'fcra_number', 
-              'registration_certificate', 'pan_card_image', 'fcra_certificate',
-              'tax_exemption_certificate'
+              'registration_number', 'registration_certificate', 'pan_number', 'pan_card_image',
+              'fcra_number', 'fcra_certificate', 'tax_exemption_certificate'
             ];
-            
+
             // Type-safe check for changed critical fields
             const hasChangedCriticalFields = criticalFields.some(field => {
               const existingValue = existingRecord?.rows[0][field];
               const newValue = ngoData[field as keyof NGODetailsData];
               return existingValue !== newValue;
             });
-            
+
             // If critical verification fields have changed, set verification status to false
             verificationNeeded = hasChangedCriticalFields;
-            
-            // Update existing record
+
+            // Update existing record with all fields
             updateQuery = await query(
               `UPDATE ngos 
-              SET ngo_name = $2, mission_statement = $3, contact_person = $4,
-                  contact_number = $5, operating_hours = $6, target_demographics = $7,
-                  ngo_type = $8, registration_number = $9, registration_certificate = $10,
-                  pan_number = $11, pan_card_image = $12, fcra_number = $13,
-                  fcra_certificate = $14, tax_exemption_certificate = $15,
-                  annual_reports_link = $16, is_verified = $17, updated_at = CURRENT_TIMESTAMP
-              WHERE user_id = $1
-              RETURNING *`,
+                SET ngo_name = $2, mission_statement = $3, contact_person = $4,
+                    contact_number = $5, operating_hours = $6, target_demographics = $7,
+                    ngo_type = $8, registration_number = $9, 
+                    registration_certificate = $10, registration_certificate_url = $11, registration_certificate_storage = $12,
+                    pan_number = $13, pan_card_image = $14, pan_card_image_url = $15, pan_card_image_storage = $16,
+                    fcra_number = $17, fcra_certificate = $18, fcra_certificate_url = $19, fcra_certificate_storage = $20,
+                    tax_exemption_certificate = $21, tax_exemption_certificate_url = $22, tax_exemption_certificate_storage = $23,
+                    annual_reports_link = $24, storage_capacity_kg = $25, latitude = $26, longitude = $27,
+                    vehicle_capacity_kg = $28, food_preferences = $29, priority_level = $30,
+                    is_verified = $31, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = $1
+                RETURNING *`,
               [
                 user.id, ngo_name, mission_statement, contact_person, contact_number,
                 operating_hours, target_demographics, ngo_type, registration_number,
-                registration_certificate, pan_number, pan_card_image, fcra_number,
-                fcra_certificate, tax_exemption_certificate, annual_reports_link,
+                registration_certificate, registration_certificate_url, registration_certificate_storage,
+                pan_number, pan_card_image, pan_card_image_url, pan_card_image_storage,
+                fcra_number, fcra_certificate, fcra_certificate_url, fcra_certificate_storage,
+                tax_exemption_certificate, tax_exemption_certificate_url, tax_exemption_certificate_storage,
+                annual_reports_link, storage_capacity_kg, latitude, longitude,
+                vehicle_capacity_kg, food_preferences, priority_level,
                 // If critical fields changed, set to false, otherwise keep existing status
                 hasChangedCriticalFields ? false : existingRecord.rows[0].is_verified
               ]
@@ -427,7 +484,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
         validationResult = recipientDetailsSchema.safeParse(req.body) as ValidationResult;
         if (validationResult.success) {
           const recipientData = validationResult.data as RecipientDetailsData;
-          const { 
+          const {
             recipient_name, recipient_details, contact_person, contact_number,
             id_type, id_number, id_image, address, proof_of_need
           } = recipientData;
@@ -455,17 +512,17 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           } else {
             // Check if verification fields have changed
             const criticalFields = ['id_type', 'id_number', 'id_image', 'proof_of_need'];
-            
+
             // Type-safe check for changed critical fields
             const hasChangedCriticalFields = criticalFields.some(field => {
               const existingValue = existingRecord?.rows[0][field];
               const newValue = recipientData[field as keyof RecipientDetailsData];
               return existingValue !== newValue;
             });
-            
+
             // If critical verification fields have changed, set verification status to false
             verificationNeeded = hasChangedCriticalFields;
-            
+
             // Update existing record
             updateQuery = await query(
               `UPDATE recipients 
@@ -492,8 +549,8 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
           message: 'Invalid user role'
         });
     }
-    
-    
+
+
     if (!validationResult || !validationResult.success) {
       return res.status(400).json({
         success: false,
@@ -501,7 +558,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
         errors: validationResult ? validationResult.error.errors : 'Validation failed'
       });
     }
-   
+
     // If verification is needed, send an email to admin
     if (verificationNeeded && (user.role.toUpperCase() === 'NGO' || user.role.toUpperCase() === 'RECIPIENT')) {
       // Get admin emails
@@ -509,18 +566,18 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
         'SELECT email FROM users WHERE role = $1',
         ['ADMIN']
       );
-      
+
       if (adminQuery.rows.length > 0) {
         const adminEmails = adminQuery.rows.map(row => row.email).join(',');
         const userQuery = await query(
           'SELECT username, email FROM users WHERE id = $1',
           [user.id]
         );
-        
+
         const username = userQuery.rows[0].username;
         const userEmail = userQuery.rows[0].email;
         const roleType = user.role.toUpperCase();
-        
+
         // Create verification log
         await query(
           `INSERT INTO verification_logs (
@@ -534,7 +591,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
             `New ${roleType.toLowerCase()} registration/update requiring verification`
           ]
         );
-        
+
         // Send notification email to admin
         const subject = `Food Donation App - New ${roleType} Verification Required`;
         const text = `Hello Admin,\n\nA new ${roleType.toLowerCase()} account or profile update requires your verification.\n\nUser: ${username}\nEmail: ${userEmail}\n\nPlease log in to the admin dashboard to review and verify this account.\n\nRegards,\nFood Donation App Team`;
@@ -561,10 +618,10 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
             <p>Regards,<br>Food Donation App Team</p>
           </div>
         `;
-        
+
         // Send email to admin(s)
         await sendEmail(adminEmails, subject, text, html);
-        
+
         // Send notification to user
         const userSubject = `Food Donation App - Your ${roleType} Account Verification`;
         const userText = `Hello ${username},\n\nThank you for providing your ${roleType.toLowerCase()} details. Your information has been submitted for verification. You will be notified once the verification is complete.\n\nPlease note that you won't be able to place orders until your account is verified by our team.\n\nRegards,\nFood Donation App Team`;
@@ -578,7 +635,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
             <p>Regards,<br>Food Donation App Team</p>
           </div>
         `;
-        
+
         // Send email to user
         await sendEmail(userEmail, userSubject, userText, userHtml);
       }
@@ -593,7 +650,7 @@ router.put('/role-details', authMiddleware, async (req: Request, res: Response):
 
   } catch (error) {
     console.error('Error updating role details:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
       message: 'Failed to update role details',
     });
@@ -605,9 +662,9 @@ router.get('/verification-status', authMiddleware, async (req: Request, res: Res
   try {
     const user = req.user as UserPayload;
     if (!user?.id || !user?.role) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
 
@@ -650,7 +707,7 @@ router.get('/verification-status', authMiddleware, async (req: Request, res: Res
     }
 
     const verificationStatus = verificationQuery.rows[0];
-    
+
     // Get the most recent verification log
     const logQuery = await query(
       `SELECT * FROM verification_logs 
@@ -687,9 +744,9 @@ router.get('/verification-status', authMiddleware, async (req: Request, res: Res
 
   } catch (error) {
     console.error('Error checking verification status:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to check verification status' 
+      message: 'Failed to check verification status'
     });
   }
 });
@@ -703,9 +760,9 @@ router.get('/completion', authMiddleware, async (req: Request, res: Response): P
   try {
     const user = req.user as UserPayload;
     if (!user?.id || !user?.role) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
 
@@ -737,55 +794,64 @@ router.get('/completion', authMiddleware, async (req: Request, res: Response): P
     let roleCompletion = 0;
     if (roleDetails) {
       // Calculate differently based on role to account for verification fields
+
       if (user.role.toUpperCase() === 'NGO') {
-        // For NGOs, include verification documents in completion calculation
+        // For NGOs, include verification documents and new fields in completion calculation
         const requiredFields = [
-          'ngo_name', 'mission_statement', 'contact_person', 'contact_number', 
+          'ngo_name', 'mission_statement', 'contact_person', 'contact_number',
           'operating_hours', 'target_demographics'
         ];
-        
+
         const verificationFields = [
-          'ngo_type', 'registration_number', 'registration_certificate', 
+          'ngo_type', 'registration_number', 'registration_certificate',
           'pan_number', 'pan_card_image'
         ];
-        
+
         const optionalFields = [
-          'fcra_number', 'fcra_certificate', 'tax_exemption_certificate', 
+          'fcra_number', 'fcra_certificate', 'tax_exemption_certificate',
           'annual_reports_link'
         ];
-        
+
+        const capacityFields = [
+          'storage_capacity_kg', 'latitude', 'longitude',
+          'vehicle_capacity_kg', 'food_preferences', 'priority_level'
+        ];
+
         const requiredFilled = requiredFields.filter(f => roleDetails[f]).length;
         const verificationFilled = verificationFields.filter(f => roleDetails[f]).length;
         const optionalFilled = optionalFields.filter(f => roleDetails[f]).length;
-        
+        const capacityFilled = capacityFields.filter(f => roleDetails[f]).length;
+
         // Calculate weighted completion
-        const requiredWeight = 25; // 25% for required fields
-        const verificationWeight = 20; // 20% for verification fields
+        const requiredWeight = 20; // 20% for required fields
+        const verificationWeight = 15; // 15% for verification fields
         const optionalWeight = 5; // 5% for optional fields
-        
-        roleCompletion = 
+        const capacityWeight = 10; // 10% for capacity fields
+
+        roleCompletion =
           (requiredFilled / requiredFields.length) * requiredWeight +
           (verificationFilled / verificationFields.length) * verificationWeight +
-          (optionalFilled / optionalFields.length) * optionalWeight;
-      } 
+          (optionalFilled / optionalFields.length) * optionalWeight +
+          (capacityFilled / capacityFields.length) * capacityWeight;
+      }
       else if (user.role.toUpperCase() === 'RECIPIENT') {
         // For recipients, include verification documents in completion calculation
         const requiredFields = [
           'recipient_name', 'recipient_details', 'contact_person', 'contact_number'
         ];
-        
+
         const verificationFields = [
           'id_type', 'id_number', 'id_image', 'address', 'proof_of_need'
         ];
-        
+
         const requiredFilled = requiredFields.filter(f => roleDetails[f]).length;
         const verificationFilled = verificationFields.filter(f => roleDetails[f]).length;
-        
+
         // Calculate weighted completion
         const requiredWeight = 25; // 25% for required fields
         const verificationWeight = 25; // 25% for verification fields
-        
-        roleCompletion = 
+
+        roleCompletion =
           (requiredFilled / requiredFields.length) * requiredWeight +
           (verificationFilled / verificationFields.length) * verificationWeight;
       }
@@ -806,9 +872,9 @@ router.get('/completion', authMiddleware, async (req: Request, res: Response): P
 
   } catch (error) {
     console.error('Error calculating profile completion:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to calculate profile completion' 
+      message: 'Failed to calculate profile completion'
     });
   }
 });
@@ -817,14 +883,14 @@ router.post('/upload-profile-picture', authMiddleware, async (req: Request, res:
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
 
     const { image, fileType } = req.body;
-    
+
     if (!image || !fileType) {
       return res.status(400).json({
         success: false,
@@ -834,8 +900,8 @@ router.post('/upload-profile-picture', authMiddleware, async (req: Request, res:
 
     // Use S3Service to upload the image
     const uploadResult = await s3Service.uploadProfilePicture(
-      user.id.toString(), 
-      image, 
+      user.id.toString(),
+      image,
       fileType
     );
 
@@ -854,7 +920,7 @@ router.post('/upload-profile-picture', authMiddleware, async (req: Request, res:
 
   } catch (error) {
     console.error('Error uploading profile picture:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
       message: 'Failed to upload profile picture',
     });
@@ -867,17 +933,17 @@ router.post('/upload-document', authMiddleware, async (req: Request, res: Respon
     const { document, fileType, documentType } = req.body;
 
     if (!user?.id || !user?.role) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Authentication required' 
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
       });
     }
 
     // Validate request
     if (!document || !fileType || !documentType) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Document, fileType and documentType are required' 
+      return res.status(400).json({
+        success: false,
+        message: 'Document, fileType and documentType are required'
       });
     }
 
@@ -892,10 +958,10 @@ router.post('/upload-document', authMiddleware, async (req: Request, res: Respon
     // Upload to S3
     const folder = user.role.toLowerCase() + 's';
     const uploadResult = await s3Service.uploadDocument(
-      folder, 
-      user.id.toString(), 
-      documentType, 
-      document, 
+      folder,
+      user.id.toString(),
+      documentType,
+      document,
       fileType
     );
 
@@ -935,7 +1001,7 @@ router.post('/upload-document', authMiddleware, async (req: Request, res: Respon
       'SELECT username, email FROM users WHERE id = $1',
       [user.id]
     );
-    
+
     if (!userQuery.rows.length) {
       return res.status(404).json({
         success: false,
@@ -964,30 +1030,30 @@ router.post('/upload-document', authMiddleware, async (req: Request, res: Respon
       'SELECT email FROM users WHERE role = $1',
       ['ADMIN']
     );
-    
+
     let adminEmail = process.env.ADMIN_EMAIL || '20je0209@cve.iitism.ac.in';
-    
+
     if (adminQuery.rows.length > 0) {
       adminEmail = adminQuery.rows.map(row => row.email).join(',');
     }
-    
+
     // Generate verification tokens for approve/reject actions
     const approveToken = await generateVerificationToken(
-      user.role.toUpperCase(), 
+      user.role.toUpperCase(),
       updateResult.rows[0].id,
       user.id
     );
-    
+
     // API base URL
     const apiUrl = process.env.API_URL || 'http://localhost:3000/api';
-    
+
     // Direct links for document viewing
     const documentViewUrl = uploadResult.url;
-    
+
     // Verification action URLs
     const approveUrl = `${apiUrl}/profile/verify-document?token=${approveToken}&action=approve&logId=${logResult.rows[0].id}`;
     const rejectUrl = `${apiUrl}/profile/verify-document?token=${approveToken}&action=reject&logId=${logResult.rows[0].id}`;
-    
+
     // Send notification email to admin with viewing and action links
     const adminSubject = `Food Donation App - New ${user.role} Document Upload Requires Verification`;
     const adminText = `
@@ -1045,7 +1111,7 @@ router.post('/upload-document', authMiddleware, async (req: Request, res: Respon
         <p>Regards,<br>Food Donation App Team</p>
       </div>
     `;
-    
+
     await sendEmail(adminEmail, adminSubject, adminText, adminHtml);
 
     return res.status(200).json({
@@ -1057,9 +1123,9 @@ router.post('/upload-document', authMiddleware, async (req: Request, res: Respon
 
   } catch (error) {
     console.error('Error uploading document:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to upload document: ' + (error instanceof Error ? error.message : 'Unknown error') 
+      message: 'Failed to upload document: ' + (error instanceof Error ? error.message : 'Unknown error')
     });
   }
 });
@@ -1067,116 +1133,116 @@ router.post('/upload-document', authMiddleware, async (req: Request, res: Respon
 router.get('/verify-document', async (req: Request, res: Response): Promise<any> => {
   try {
     const { token, action, logId } = req.query;
-    
+
     if (!token || !action || !logId) {
       return res.status(400).json({
         success: false,
         message: 'Missing required parameters'
       });
     }
-    
+
     if (action !== 'approve' && action !== 'reject') {
       return res.status(400).json({
         success: false,
         message: 'Invalid action'
       });
     }
-    
+
     // Verify token
     const payload = jwt.verify(
-      token as string, 
+      token as string,
       process.env.JWT_SECRET || 'your-secret-key'
     ) as { entityType: string; entityId: number; userId: number; purpose: string };
-    
+
     if (payload.purpose !== 'verification') {
       return res.status(401).json({
         success: false,
         message: 'Invalid verification token'
       });
     }
-    
+
     // Get entity details
     const entityType = payload.entityType; // 'NGO' or 'RECIPIENT'
     const entityId = payload.entityId;
     const userId = payload.userId;
-    
+
     // Check if log exists
     const logQuery = await query(
       'SELECT * FROM verification_logs WHERE id = $1',
       [logId]
     );
-    
+
     if (!logQuery.rows.length) {
       return res.status(404).json({
         success: false,
         message: 'Verification record not found'
       });
     }
-    
+
     // Update entity verification status
     const table = entityType.toLowerCase() + 's';
     const isApproved = action === 'approve';
-    
+
     const updateResult = await query(
       `UPDATE ${table} 
        SET is_verified = $1, can_place_orders = $1, verification_date = NOW() 
        WHERE id = $2 RETURNING *`,
       [isApproved, entityId]
     );
-    
+
     if (!updateResult.rows.length) {
       return res.status(404).json({
         success: false,
         message: 'Entity not found'
       });
     }
-    
+
     // Update log status
     await query(
       `UPDATE verification_logs 
        SET status = $1, verification_notes = $2, updated_at = CURRENT_TIMESTAMP 
        WHERE id = $3`,
       [
-        isApproved ? 'APPROVED' : 'REJECTED', 
+        isApproved ? 'APPROVED' : 'REJECTED',
         isApproved ? 'Approved via email verification' : 'Rejected via email verification',
         logId
       ]
     );
-    
+
     // Get user information
     const userQuery = await query(
       'SELECT username, email FROM users WHERE id = $1',
       [userId]
     );
-    
+
     if (!userQuery.rows.length) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    
+
     const username = userQuery.rows[0].username;
     const userEmail = userQuery.rows[0].email;
-    
+
     // Send notification email to the user about their verification status
     const appName = 'Food Donation App';
-    const emailSubject = isApproved ? 
-      `${appName} - Your Account Has Been Verified` : 
+    const emailSubject = isApproved ?
+      `${appName} - Your Account Has Been Verified` :
       `${appName} - Account Verification Update`;
-    
-    const emailText = isApproved ? 
-      `Hello ${username},\n\nGreat news! Your account has been verified. You can now place orders and fully use the ${appName}.\n\nThank you for your patience during the verification process.\n\nRegards,\n${appName} Team` : 
+
+    const emailText = isApproved ?
+      `Hello ${username},\n\nGreat news! Your account has been verified. You can now place orders and fully use the ${appName}.\n\nThank you for your patience during the verification process.\n\nRegards,\n${appName} Team` :
       `Hello ${username},\n\nWe've reviewed your account verification documents. Unfortunately, we couldn't approve your verification at this time.\n\nPlease update your information and try again.\n\nIf you have any questions, please contact our support team.\n\nRegards,\n${appName} Team`;
-    
-    const emailHtml = isApproved ? 
+
+    const emailHtml = isApproved ?
       `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #4CAF50; border-bottom: 1px solid #4CAF50; padding-bottom: 10px;">Your Account Has Been Verified!</h2>
         <p>Hello ${username},</p>
         <p>Great news! Your account has been verified. You can now place orders and fully use the ${appName}.</p>
         <p>Thank you for your patience during the verification process.</p>
         <p>Regards,<br>${appName} Team</p>
-      </div>` : 
+      </div>` :
       `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #f44336; border-bottom: 1px solid #f44336; padding-bottom: 10px;">Account Verification Update</h2>
         <p>Hello ${username},</p>
@@ -1185,9 +1251,9 @@ router.get('/verify-document', async (req: Request, res: Response): Promise<any>
         <p>If you have any questions, please contact our support team.</p>
         <p>Regards,<br>${appName} Team</p>
       </div>`;
-    
+
     await sendEmail(userEmail, emailSubject, emailText, emailHtml);
-    
+
     // Return a success page
     const htmlResponse = `
       <!DOCTYPE html>
@@ -1229,13 +1295,13 @@ router.get('/verify-document', async (req: Request, res: Response): Promise<any>
       </body>
       </html>
     `;
-    
+
     res.setHeader('Content-Type', 'text/html');
     return res.send(htmlResponse);
-    
+
   } catch (error) {
     console.error('Error in document verification:', error);
-    
+
     // Return an error page
     const htmlResponse = `
       <!DOCTYPE html>
@@ -1277,7 +1343,7 @@ router.get('/verify-document', async (req: Request, res: Response): Promise<any>
       </body>
       </html>
     `;
-    
+
     res.setHeader('Content-Type', 'text/html');
     return res.status(400).send(htmlResponse);
   }
@@ -1287,7 +1353,7 @@ router.post('/admin-verify', authMiddleware, async (req: Request, res: Response)
   try {
     const user = req.user as UserPayload;
     const { userId, approved, notes } = req.body;
-    
+
     // Check if user is an admin
     if (user.role !== 'ADMIN') {
       return res.status(403).json({
@@ -1306,7 +1372,7 @@ router.post('/admin-verify', authMiddleware, async (req: Request, res: Response)
 
     // Get the user to verify
     const userToVerify = await query('SELECT * FROM users WHERE id = $1', [userId]);
-    
+
     if (!userToVerify.rows[0]) {
       return res.status(404).json({
         success: false,
@@ -1356,22 +1422,22 @@ router.post('/admin-verify', authMiddleware, async (req: Request, res: Response)
 
     // Send email notification to the user
     const appName = 'Food Donation App';
-    const emailSubject = approved ? 
-      `${appName} - Your Account Has Been Verified` : 
+    const emailSubject = approved ?
+      `${appName} - Your Account Has Been Verified` :
       `${appName} - Account Verification Update`;
-    
-    const emailText = approved ? 
-      `Hello ${username},\n\nGreat news! Your account has been verified. You can now place orders and fully use the ${appName}.\n\nThank you for your patience during the verification process.\n\nRegards,\n${appName} Team` : 
+
+    const emailText = approved ?
+      `Hello ${username},\n\nGreat news! Your account has been verified. You can now place orders and fully use the ${appName}.\n\nThank you for your patience during the verification process.\n\nRegards,\n${appName} Team` :
       `Hello ${username},\n\nWe've reviewed your account verification documents. Unfortunately, we couldn't approve your verification at this time.\n\n${notes || 'Please update your information and try again.'}\n\nIf you have any questions, please contact our support team.\n\nRegards,\n${appName} Team`;
-    
-    const emailHtml = approved ? 
+
+    const emailHtml = approved ?
       `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #4CAF50; border-bottom: 1px solid #4CAF50; padding-bottom: 10px;">Your Account Has Been Verified!</h2>
         <p>Hello ${username},</p>
         <p>Great news! Your account has been verified. You can now place orders and fully use the ${appName}.</p>
         <p>Thank you for your patience during the verification process.</p>
         <p>Regards,<br>${appName} Team</p>
-      </div>` : 
+      </div>` :
       `<div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #f44336; border-bottom: 1px solid #f44336; padding-bottom: 10px;">Account Verification Update</h2>
         <p>Hello ${username},</p>
@@ -1380,7 +1446,7 @@ router.post('/admin-verify', authMiddleware, async (req: Request, res: Response)
         <p>If you have any questions, please contact our support team.</p>
         <p>Regards,<br>${appName} Team</p>
       </div>`;
-    
+
     await sendEmail(userEmail, emailSubject, emailText, emailHtml);
 
     return res.status(200).json({
@@ -1410,7 +1476,7 @@ async function generateVerificationToken(entityType: string, entityId: number, u
     process.env.JWT_SECRET || 'your-secret-key',
     { expiresIn: '7d' } // Token expires in 7 days
   );
-  
+
   return token;
 }
 
@@ -1419,35 +1485,35 @@ async function handleSendVerificationOtp(req: Request, res: Response): Promise<a
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-    
+
     const { type, newValue, contactMethod } = req.body;
-    
+
     if (!type || !newValue) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: type and new value'
       });
     }
-    
+
     if (!['email', 'phone'].includes(type)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid type. Must be "email" or "phone"'
       });
     }
-    
+
     if (!['email', 'phone'].includes(contactMethod || type)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid contact method. Must be "email" or "phone"'
       });
     }
-    
+
     // Check if new value is already taken
     if (type === 'email') {
       const existingUser = await query(
@@ -1474,7 +1540,7 @@ async function handleSendVerificationOtp(req: Request, res: Response): Promise<a
         });
       }
     }
-    
+
     // Get current user info
     const currentUser = await query(
       'SELECT email, phone, username FROM users WHERE id = $1',
@@ -1484,17 +1550,17 @@ async function handleSendVerificationOtp(req: Request, res: Response): Promise<a
     const currentEmail = currentUser.rows[0].email;
     const currentPhone = currentUser.rows[0].phone;
     const username = currentUser.rows[0].username;
-    
+
     // Generate OTP
     const otp = otpService.generateOtp();
-    
+
     // Store OTP with target value in Redis
     await redisClient.set(`${type}_change:${user.id}`, JSON.stringify({
       otp,
       newValue,
       contactMethod
     }), { EX: 300 }); // 5 minutes expiry
-    
+
     // Send OTP based on preferred contact method
     if (contactMethod === 'email' && currentEmail) {
       // Create email content
@@ -1514,10 +1580,10 @@ async function handleSendVerificationOtp(req: Request, res: Response): Promise<a
           <p>Regards,<br>Food Donation App Team</p>
         </div>
       `;
-      
+
       // Send OTP via email
       await sendEmail(currentEmail, subject, text, html);
-      
+
       return res.status(200).json({
         success: true,
         message: `OTP sent successfully to your email`
@@ -1525,7 +1591,7 @@ async function handleSendVerificationOtp(req: Request, res: Response): Promise<a
     } else if (contactMethod === 'phone' && currentPhone) {
       // Send OTP via Twilio
       await otpService.sendOtp(currentPhone, otp);
-      
+
       return res.status(200).json({
         success: true,
         message: `OTP sent successfully to your phone number`
@@ -1549,16 +1615,16 @@ async function handleSendVerificationOtp(req: Request, res: Response): Promise<a
             <p>Regards,<br>Food Donation App Team</p>
           </div>
         `;
-        
+
         await sendEmail(currentEmail, subject, text, html);
-        
+
         return res.status(200).json({
           success: true,
           message: `OTP sent successfully to your email`
         });
       } else if (currentPhone) {
         await otpService.sendOtp(currentPhone, otp);
-        
+
         return res.status(200).json({
           success: true,
           message: `OTP sent successfully to your phone number`
@@ -1572,9 +1638,9 @@ async function handleSendVerificationOtp(req: Request, res: Response): Promise<a
     }
   } catch (error) {
     console.error('Error sending verification OTP:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to send OTP' 
+      message: 'Failed to send OTP'
     });
   }
 }
@@ -1584,47 +1650,47 @@ async function handleVerifyOtp(req: Request, res: Response): Promise<any> {
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-    
+
     const { type, otp } = req.body;
-    
+
     if (!type || !otp) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: type and otp'
       });
     }
-    
+
     if (!['email', 'phone'].includes(type)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid type. Must be "email" or "phone"'
       });
     }
-    
+
     // Get stored OTP data
     const storedData = await redisClient.get(`${type}_change:${user.id}`);
-    
+
     if (!storedData) {
       return res.status(400).json({
         success: false,
         message: 'OTP expired or not requested'
       });
     }
-    
+
     const { otp: storedOtp, newValue, contactMethod } = JSON.parse(storedData);
-    
+
     if (otp !== storedOtp) {
       return res.status(400).json({
         success: false,
         message: 'Invalid OTP'
       });
     }
-    
+
     // Update the specified field
     let updateQuery;
     if (type === 'email') {
@@ -1638,13 +1704,13 @@ async function handleVerifyOtp(req: Request, res: Response): Promise<any> {
         [newValue, user.id]
       );
     }
-    
+
     // Delete OTP from Redis
     await redisClient.del(`${type}_change:${user.id}`);
-    
+
     const email = type === 'email' ? newValue : updateQuery.rows[0].email;
     const username = updateQuery.rows[0].username;
-    
+
     // Send confirmation email
     const subject = `Food Donation App - ${type === 'email' ? 'Email' : 'Phone Number'} Changed Successfully`;
     const text = `Hello ${username},\n\nYour ${type === 'email' ? 'email' : 'phone number'} has been successfully changed to ${newValue}.\n\nIf you did not make this change, please contact our support team immediately.\n\nRegards,\nFood Donation App Team`;
@@ -1657,10 +1723,10 @@ async function handleVerifyOtp(req: Request, res: Response): Promise<any> {
         <p>Regards,<br>Food Donation App Team</p>
       </div>
     `;
-    
+
     // Send confirmation email
     await sendEmail(email, subject, text, html);
-    
+
     return res.status(200).json({
       success: true,
       message: `${type === 'email' ? 'Email' : 'Phone number'} updated successfully`,
@@ -1668,9 +1734,9 @@ async function handleVerifyOtp(req: Request, res: Response): Promise<any> {
     });
   } catch (error) {
     console.error(`Error verifying ${req.body.type} OTP:`, error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to verify OTP' 
+      message: 'Failed to verify OTP'
     });
   }
 }
@@ -1690,9 +1756,9 @@ router.post('/send-email-otp', authMiddleware, async (req: Request, res: Respons
     return await handleSendVerificationOtp(req, res);
   } catch (error) {
     console.error('Error in legacy endpoint:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to send OTP' 
+      message: 'Failed to send OTP'
     });
   }
 });
@@ -1705,9 +1771,9 @@ router.post('/send-phone-otp', authMiddleware, async (req: Request, res: Respons
     return await handleSendVerificationOtp(req, res);
   } catch (error) {
     console.error('Error in legacy endpoint:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to send OTP' 
+      message: 'Failed to send OTP'
     });
   }
 });
@@ -1718,9 +1784,9 @@ router.post('/verify-email-otp', authMiddleware, async (req: Request, res: Respo
     return await handleVerifyOtp(req, res);
   } catch (error) {
     console.error('Error in legacy endpoint:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to verify OTP' 
+      message: 'Failed to verify OTP'
     });
   }
 });
@@ -1731,9 +1797,9 @@ router.post('/verify-phone-otp', authMiddleware, async (req: Request, res: Respo
     return await handleVerifyOtp(req, res);
   } catch (error) {
     console.error('Error in legacy endpoint:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to verify OTP' 
+      message: 'Failed to verify OTP'
     });
   }
 });
@@ -1745,21 +1811,21 @@ router.post('/send-new-email-otp', authMiddleware, async (req: Request, res: Res
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-    
+
     const { newEmail } = req.body;
-    
+
     if (!newEmail) {
       return res.status(400).json({
         success: false,
         message: 'Missing required field: newEmail'
       });
     }
-    
+
     // Check if email is already taken
     const existingUser = await query(
       'SELECT id FROM users WHERE email = $1 AND id != $2',
@@ -1772,19 +1838,19 @@ router.post('/send-new-email-otp', authMiddleware, async (req: Request, res: Res
         message: 'Email already taken'
       });
     }
-    
+
     // Generate OTP
     const otp = otpService.generateOtp();
-    
+
     // Store OTP with target value in Redis
     await redisClient.set(`new_email_verification:${user.id}`, JSON.stringify({
       otp,
       newEmail
     }), { EX: 300 }); // 5 minutes expiry
-    
+
     // Send OTP directly to the new email
     const username = (await query('SELECT username FROM users WHERE id = $1', [user.id])).rows[0].username;
-    
+
     const subject = 'Food Donation App - New Email Verification';
     const text = `Hello,\n\nYour verification code to verify this new email address is: ${otp}\n\nThis code will expire in 5 minutes.\n\nRegards,\nFood Donation App Team`;
     const html = `
@@ -1801,19 +1867,19 @@ router.post('/send-new-email-otp', authMiddleware, async (req: Request, res: Res
         <p>Regards,<br>Food Donation App Team</p>
       </div>
     `;
-    
+
     // Send OTP via email to the NEW email
     await sendEmail(newEmail, subject, text, html);
-    
+
     return res.status(200).json({
       success: true,
       message: `OTP sent successfully to the new email address`
     });
   } catch (error) {
     console.error('Error sending new email OTP:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to send OTP' 
+      message: 'Failed to send OTP'
     });
   }
 });
@@ -1823,21 +1889,21 @@ router.post('/send-new-phone-otp', authMiddleware, async (req: Request, res: Res
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-    
+
     const { newPhone } = req.body;
-    
+
     if (!newPhone) {
       return res.status(400).json({
         success: false,
         message: 'Missing required field: newPhone'
       });
     }
-    
+
     // Check if phone is already taken
     const existingUser = await query(
       'SELECT id FROM users WHERE phone = $1 AND id != $2',
@@ -1850,28 +1916,28 @@ router.post('/send-new-phone-otp', authMiddleware, async (req: Request, res: Res
         message: 'Phone number already taken'
       });
     }
-    
+
     // Generate OTP
     const otp = otpService.generateOtp();
-    
+
     // Store OTP with target value in Redis
     await redisClient.set(`new_phone_verification:${user.id}`, JSON.stringify({
       otp,
       newPhone
     }), { EX: 300 }); // 5 minutes expiry
-    
+
     // Send OTP directly to the new phone number using Twilio
     await otpService.sendOtp(newPhone, otp);
-    
+
     return res.status(200).json({
       success: true,
       message: `OTP sent successfully to the new phone number`
     });
   } catch (error) {
     console.error('Error sending new phone OTP:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to send OTP' 
+      message: 'Failed to send OTP'
     });
   }
 });
@@ -1881,51 +1947,51 @@ router.post('/verify-new-email', authMiddleware, async (req: Request, res: Respo
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-    
+
     const { otp, newEmail } = req.body;
-    
+
     if (!otp || !newEmail) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: otp and newEmail'
       });
     }
-    
+
     // Get stored OTP data
     const storedData = await redisClient.get(`new_email_verification:${user.id}`);
-    
+
     if (!storedData) {
       return res.status(400).json({
         success: false,
         message: 'OTP expired or not requested'
       });
     }
-    
+
     const { otp: storedOtp, newEmail: storedEmail } = JSON.parse(storedData);
-    
+
     if (otp !== storedOtp || newEmail !== storedEmail) {
       return res.status(400).json({
         success: false,
         message: 'Invalid OTP or email mismatch'
       });
     }
-    
+
     // Update user's email
     const updateQuery = await query(
       `UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING email, username`,
       [newEmail, user.id]
     );
-    
+
     // Delete OTP from Redis
     await redisClient.del(`new_email_verification:${user.id}`);
-    
+
     const username = updateQuery.rows[0].username;
-    
+
     // Send confirmation email to the new email
     const subject = 'Food Donation App - Email Changed Successfully';
     const text = `Hello ${username},\n\nYour email has been successfully changed to ${newEmail}.\n\nIf you did not make this change, please contact our support team immediately.\n\nRegards,\nFood Donation App Team`;
@@ -1938,10 +2004,10 @@ router.post('/verify-new-email', authMiddleware, async (req: Request, res: Respo
         <p>Regards,<br>Food Donation App Team</p>
       </div>
     `;
-    
+
     // Send confirmation email
     await sendEmail(newEmail, subject, text, html);
-    
+
     return res.status(200).json({
       success: true,
       message: 'Email updated successfully',
@@ -1949,9 +2015,9 @@ router.post('/verify-new-email', authMiddleware, async (req: Request, res: Respo
     });
   } catch (error) {
     console.error('Error verifying new email OTP:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to verify OTP' 
+      message: 'Failed to verify OTP'
     });
   }
 });
@@ -1961,52 +2027,52 @@ router.post('/verify-new-phone', authMiddleware, async (req: Request, res: Respo
   try {
     const user = req.user as UserPayload;
     if (!user?.id) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required' 
+        message: 'Authentication required'
       });
     }
-    
+
     const { otp, newPhone } = req.body;
-    
+
     if (!otp || !newPhone) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: otp and newPhone'
       });
     }
-    
+
     // Get stored OTP data
     const storedData = await redisClient.get(`new_phone_verification:${user.id}`);
-    
+
     if (!storedData) {
       return res.status(400).json({
         success: false,
         message: 'OTP expired or not requested'
       });
     }
-    
+
     const { otp: storedOtp, newPhone: storedPhone } = JSON.parse(storedData);
-    
+
     if (otp !== storedOtp || newPhone !== storedPhone) {
       return res.status(400).json({
         success: false,
         message: 'Invalid OTP or phone mismatch'
       });
     }
-    
+
     // Update user's phone
     const updateQuery = await query(
       `UPDATE users SET phone = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING phone, email, username`,
       [newPhone, user.id]
     );
-    
+
     // Delete OTP from Redis
     await redisClient.del(`new_phone_verification:${user.id}`);
-    
+
     const email = updateQuery.rows[0].email;
     const username = updateQuery.rows[0].username;
-    
+
     // Send confirmation email
     if (email) {
       const subject = 'Food Donation App - Phone Number Changed Successfully';
@@ -2020,11 +2086,11 @@ router.post('/verify-new-phone', authMiddleware, async (req: Request, res: Respo
           <p>Regards,<br>Food Donation App Team</p>
         </div>
       `;
-      
+
       // Send confirmation email
       await sendEmail(email, subject, text, html);
     }
-    
+
     return res.status(200).json({
       success: true,
       message: 'Phone number updated successfully',
@@ -2032,9 +2098,9 @@ router.post('/verify-new-phone', authMiddleware, async (req: Request, res: Respo
     });
   } catch (error) {
     console.error('Error verifying new phone OTP:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to verify OTP' 
+      message: 'Failed to verify OTP'
     });
   }
 });

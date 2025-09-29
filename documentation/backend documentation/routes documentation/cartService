@@ -1,0 +1,141 @@
+# Cart Service
+
+## Overview
+The Cart Service provides a Redis-based shopping cart implementation with PostgreSQL persistence for a food donation management system. It handles temporary cart storage and checkout processing with route optimization for food pickup and delivery.
+
+## Key Features
+- Temporary cart storage in Redis with configurable expiration (24 hours)
+- Automatic cleanup of inactive carts (12+ hours of inactivity)
+- Cart persistence to PostgreSQL database during checkout
+- Inventory management for different food donation categories
+- Dynamic delivery fee calculation based on distance and pickup stops
+
+## Interface
+
+### Cart Object
+```typescript
+interface Cart {
+  id?: number;  
+  userId: number;
+  items: CartItem[];
+  deliveryAddress?: string;
+  deliveryFee: number;
+  totalAmount: number; 
+  status: string;
+  lastAccessed?: number;
+}
+
+interface CartItem {
+  foodDonationId: number;
+  donorId: number;
+  quantity: number;
+  notes?: string;
+  itemTotal: number; 
+  status: string;
+  foodType?: string;
+  foodCategory?: string;
+  donorName?: string;
+  pickupLocation?: string;
+  isFromPastEvent: boolean;
+}
+```
+
+## Methods
+
+### `getCart(userId: number, cartId?: number): Promise<Cart | null>`
+Retrieves a cart from Redis storage and enriches items with food donation details.
+
+**Inputs:**
+- `userId`: User's ID
+- `cartId`: Optional cart ID (if retrieving a specific cart)
+
+**Returns:**
+- Cart object or null if not found
+
+### `addToCart(userId: number, item: CartItem, cartId?: number): Promise<void>`
+Adds a food donation item to the user's cart with availability validation.
+
+**Inputs:**
+- `userId`: User's ID
+- `item`: CartItem object with donation details
+- `cartId`: Optional cart ID
+
+**Throws:**
+- Error if food donation not available or requested quantity exceeds available amount
+
+### `updateCartItem(userId: number, foodDonationId: number, updates: Partial<CartItem>, cartId?: number): Promise<void>`
+Updates an existing item in the cart.
+
+**Inputs:**
+- `userId`: User's ID
+- `foodDonationId`: ID of food donation to update
+- `updates`: Partial CartItem with fields to update
+- `cartId`: Optional cart ID
+
+**Throws:**
+- Error if cart or item not found, or quantity validation fails
+
+### `removeFromCart(userId: number, foodDonationId: number, cartId?: number): Promise<void>`
+Removes a food donation item from the cart.
+
+**Inputs:**
+- `userId`: User's ID
+- `foodDonationId`: ID of food donation to remove
+- `cartId`: Optional cart ID
+
+### `clearCart(userId: number, cartId?: number): Promise<void>`
+Removes the entire cart from Redis.
+
+**Inputs:**
+- `userId`: User's ID
+- `cartId`: Optional cart ID
+
+### `persistCart(userId: number, deliveryAddress: string, deliveryLatitude?: number, deliveryLongitude?: number): Promise<{ cartId: number; deliveryFee: number; totalAmount: number; }>`
+Converts a temporary cart to a persistent order in the database.
+
+**Inputs:**
+- `userId`: User's ID
+- `deliveryAddress`: Delivery address string
+- `deliveryLatitude`: Optional latitude coordinate
+- `deliveryLongitude`: Optional longitude coordinate
+
+**Returns:**
+- Object with cart ID, delivery fee, and total amount
+
+**Process:**
+1. Validates all locations (pickup and delivery)
+2. Calculates optimal delivery route
+3. Computes delivery fee based on distance and stops
+4. Creates cart record in database
+5. Processes each item, reducing inventory
+6. Updates food donation status if inventory depleted
+
+## Configuration Constants
+- `CART_EXPIRY`: 24 hours (Redis TTL)
+- `CART_INACTIVE_THRESHOLD`: 12 hours (for cleanup)
+- `BASE_DELIVERY_FEE`: Base fee for delivery (currently 0)
+- `PER_KM_RATE`: Rate per kilometer (0.5)
+- `ADDITIONAL_STOP_FEE`: Fee per pickup stop (1)
+
+## Dependencies
+- Redis client for temporary storage
+- PostgreSQL database for persistence
+- Map service for geocoding and route optimization
+
+## Usage Example
+```typescript
+// Add food donation to cart
+await cartService.addToCart(userId, {
+  foodDonationId: 123,
+  donorId: 456,
+  quantity: 2,
+  notes: "Handle with care",
+  itemTotal: 0,
+  status: "ACTIVE",
+  isFromPastEvent: false
+});
+
+// Checkout process
+const result = await cartService.persistCart(userId, "123 Main St, City");
+console.log(`Order created with ID: ${result.cartId}, Delivery fee: ${result.deliveryFee}`);
+```

@@ -43,6 +43,12 @@ CREATE TABLE IF NOT EXISTS ngos (
     is_verified BOOLEAN DEFAULT FALSE,
     can_place_orders BOOLEAN DEFAULT FALSE,
     verification_date TIMESTAMP WITH TIME ZONE,
+    storage_capacity_kg DECIMAL(10,2) DEFAULT 0,
+    latitude DECIMAL(10,6),
+    longitude DECIMAL(10,6),
+    vehicle_capacity_kg DECIMAL(10,2) DEFAULT 0,
+    food_preferences TEXT[],
+    priority_level INTEGER DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

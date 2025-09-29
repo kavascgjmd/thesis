@@ -153,6 +153,9 @@ class CartService {
                     default:
                         availableQuantity = fd.quantity || 0;
                 }
+                if (item.isFromPastEvent === undefined || !item.isFromPastEvent) {
+                    availableQuantity = fd.servings;
+                }
                 if (availableQuantity < item.quantity) {
                     throw new Error('Requested quantity exceeds available amount');
                 }
@@ -224,6 +227,9 @@ class CartService {
                             break;
                         default:
                             availableQuantity = fd.quantity || 0;
+                    }
+                    if (cart.items[itemIndex].isFromPastEvent === undefined || !cart.items[itemIndex].isFromPastEvent) {
+                        availableQuantity = fd.servings || 0;
                     }
                     if (updates.quantity > availableQuantity) {
                         throw new Error('Requested quantity exceeds available amount');
