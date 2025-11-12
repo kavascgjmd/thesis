@@ -1,0 +1,485 @@
+Greenfield Roadmap for “thesis” to 100M Users (Build From Scratch)
+
+Version: 2.0 (Greenfield)
+Owner: Architecture Guild
+Last updated: 2025-09-30
+
+This plan intentionally replaces all strangler/legacy-migration steps. We will build a brand-new platform and cut over traffic when go-live criteria are met.
+
+Executive Summary
+- Objective: Deliver a globally scalable, highly available, low-latency platform for 100M users with heavy realtime features and 3D content.
+- Strategy:
+  1) Greenfield microservices with gRPC internally and REST/GraphQL at the edge; event-driven with Kafka.
+  2) Languages: Go for high-throughput services; Node/TypeScript for BFF/gateways; C++ for optimization engine; Python for ML/data pipelines.
+  3) Data: Aurora Postgres (OLTP), Redis (caching, ephemeral), OpenSearch (search), S3 (assets), Snowflake/Delta (analytics).
+  4) Realtime: Dedicated WebSocket gateway (Go) with NATS JetStream or Kafka backplane.
+  5) Frontend: Micro-frontend architecture; React Query v5 and Redux Toolkit; 3D asset pipeline and CDN delivery.
+  6) Infrastructure: AWS CDK, EKS (or ECS), multi-account/multi-region; observability with OpenTelemetry, Prometheus/Grafana, Sentry.
+  7) Security: OIDC, mTLS, WAF, least-privilege IAM, KMS encryption, automated scanning.
+  8) Phased greenfield build, performance/chaos verification, then DNS cutover to new stack.
+
+Non-Functional Requirements (NFRs) and SLOs
+- Availability SLO:
+  - Core APIs: 99.99% monthly (≈ 4m 23s downtime budget).
+  - Realtime channels: 99.9% monthly (≈ 43m 49s).
+- Latency SLO (p95):
+  - Read APIs: <200ms intra-region, <400ms cross-region.
+  - Write APIs: <300ms intra-region.
+  - Realtime fanout: <250ms edge-to-edge.
+- Throughput: Baseline capacity to sustain 500k peak RPS across services; burst resilience via autoscaling and backpressure.
+- Data durability: RPO ≤ 1 minute, RTO ≤ 15 minutes; multi-AZ, multi-region DR.
+- Security: Zero-trust, mTLS, OAuth2/OIDC, WAF, DDoS protection, secrets rotation.
+- Cost: FinOps governance; track cost per 1k requests/service.
+- Observability: Full metrics + logs; tracing with intelligent tail sampling; SLO burn-rate alerting.
+
+Target System Architecture (Greenfield)
+
+Edge and Routing
+- CloudFront + WAF + Route53 for global edge security and routing.
+- Public ingress:
+  - API Gateway HTTP for REST/GraphQL.
+  - ALB/NLB for gRPC/HTTP2 services.
+- CDN for static and 3D assets with immutable, content-hashed URLs; Brotli, range requests, ktx2 textures.
+
+Runtime and Mesh
+- Kubernetes (EKS) multi-AZ per region; managed node groups and/or Fargate where sensible.
+- Service mesh (Istio or Linkerd):
+  - mTLS, retries, timeouts, circuit breakers, outlier detection.
+  - Traffic splitting for canary/blue-green rollouts.
+- Inter-service communication:
+  - gRPC with protobuf (Buf-managed) for sync.
+  - Kafka (MSK) for async events, CDC, and fanout triggers.
+
+Core Domain Services
+- identity-svc (Go): OIDC integration (Cognito/Auth0/Keycloak), JWT validation/issuance, RBAC/ABAC; 2FA/OTP via Twilio.
+- users-svc (Go/Node): User profiles, roles, consent/GDPR deletes.
+- donors-svc (Go): Donor onboarding, verification, donations CRUD; S3 signed uploads.
+- ngos-svc (Go): NGO verification, capacity, preferences, geodata.
+- donations-svc (Go): Donation lifecycle, availability, quantities; idempotent writes.
+- allocation-orchestrator (Go/Node): Validates inputs, enqueues allocation jobs (SQS/Kafka), aggregates results, audit/idempotency.
+- opt-engine (C++ gRPC): OR-Tools compiled with optimization flags; CPU pools; bounded concurrency; configurable objective weighting.
+- orders-fulfillment (Go): State machine from allocation→order→pickup/delivery→completion; sagas/compensations.
+- driver-logistics (Go): Driver auth, location ingest (WS/HTTP), telemetry, route adherence.
+- routing-maps (Go): Abstraction over Google Maps/OSRM/Valhalla; caching, throttling.
+- realtime-gateway (Go): WebSocket gateway with NATS JetStream or Kafka backplane; topic permissions, presence, quotas.
+- notification-svc (Node): SES/Twilio/FCM/APNS; templating; DLQ/retries; rate limits.
+- media-assets (Node/Go): S3 signed upload/download; 3D pipeline orchestration via Step Functions.
+- search-svc (Go): OpenSearch indexing/query; geo and text search APIs.
+- chat-svc (Go/Node) [optional]: Messaging, moderation, retention policies.
+- admin-svc (Node): Admin APIs, audit trails, configuration.
+
+Data Platform
+- OLTP: Aurora Postgres Serverless v2; per-service schemas; PITR; read replicas; eventual Global Database.
+- Caching: ElastiCache Redis Cluster (TLS/auth) for hot keys, session-like state, rate limits.
+- Search: OpenSearch (Elasticsearch-compatible) for search and operational analytics queries.
+- Objects: S3 with lifecycle (infrequent access, Glacier); signed URLs; immutable hashed paths for 3D assets.
+- Streaming/CDC: Debezium from Aurora → Kafka topics; consumers update OpenSearch, analytic sinks, and caches.
+- Analytics: Snowflake (preferred) or Delta Lake + Spark (EMR/Databricks); BI via QuickSight/Looker.
+
+Realtime at Scale
+- Realtime gateway nodes: sharded by consistent hash for connection distribution; sticky sessions.
+- Backplane: NATS JetStream (low latency) or Kafka (persistence) + local Redis pub/sub for node fanout.
+- Topics: order:{id}, driver:{id}, ngo:{id}, user:{id}, announcements:{region}.
+- Payloads: Protobuf frames; quotas and backpressure; slow-consumer handling; auth per topic.
+
+Frontend (Micro-frontend)
+- Shell container + federated remotes (Webpack Module Federation or Vite MF):
+  - donor-app, ngo-app, driver-app (PWA), admin-app, marketing, 3d-gallery.
+- Data/state:
+  - @tanstack/react-query v5 for server-state; Redux Toolkit for app-state; standardized error/retry policies.
+- 3D rendering:
+  - @react-three/fiber + drei; code-splitting; Web Workers; runtime quality scaler; device profiling.
+
+3D Asset Pipeline
+- Ingestion: Clients upload via pre-signed S3; event triggers Step Functions.
+- Processing jobs (containerized):
+  - Convert FBX→GLB (Blender CLI).
+  - gltfpack/meshoptimizer for geometry; KTX2/BasisU texture compression; generate mipmaps and LODs.
+  - Validation via glTF-Validator.
+  - Store variants (mobile/low, medium, high) under versioned prefixes.
+- Delivery: CloudFront with long TTL; range requests; device hints to select quality dynamically.
+
+API and Contract Governance
+- Protobuf-first internal interfaces with Buf (lint, breaking-change checks).
+- OpenAPI or GraphQL schema for edge endpoints; schema as code in repo.
+- Versioning strategy: opaque IDs, pagination, filtering, idempotency keys for write endpoints.
+
+Security Model
+- Identity: OAuth2/OIDC; short-lived tokens; token introspection for critical paths.
+- Network: mTLS in mesh; SPIFFE/SPIRE identities.
+- Data: Encryption at rest (KMS) and in transit (TLS 1.2+); field-level encryption for highly sensitive fields.
+- Secrets: AWS Secrets Manager or Vault; automated rotation.
+- Edge: WAF/Shield Advanced; bot control; rate limiting before app.
+- AppSec: SAST (CodeQL), DAST (ZAP), dependency and image scanning (Trivy/Grype), signed images (cosign).
+- Audit: CloudTrail and application audit logs; SoD and access reviews.
+
+Observability and SRE
+- OpenTelemetry SDKs across all services; OTEL collectors in cluster.
+- Metrics: RED for endpoints, USE for resources; SLO dashboards per service.
+- Logs: JSON structured with correlation IDs; PII redaction; retention policies.
+- Tracing: End-to-end; baggage for tenant/user IDs; tail-based sampling to keep slow/error traces.
+- Alerting: Multi-window, multi-burn-rate alerts for availability/latency/error budgets; on-call runbooks.
+
+Environments and Accounts
+- AWS accounts: dev, staging, prod, shared-services (Kafka, observability).
+- Regions: primary (e.g., us-east-1) + secondary (e.g., eu-west-1) with DR strategy; eventually active-active for core APIs.
+- CDK pipelines per environment with approvals; GitOps (Argo CD/Flux) for cluster rollouts.
+
+Repository and Project Structure
+- Option A: Polyrepo (per service repo) + shared SDK repos (proto-generated clients, design system).
+- Option B: Monorepo (Turborepo + pnpm) for FE/BFF/shared libs; separate repos for heavy services (opt-engine C++, realtime-go).
+- Shared libraries:
+  - proto/ (Buf, generated clients for Go/TS/Python/C++).
+  - design-system/ (UI kit).
+  - sdk/clients/ (typed clients and auth middleware).
+  - observability/ (OTEL wrappers, logging, metrics utilities).
+
+Phased Greenfield Delivery Plan
+
+Phase 0: Program Bootstrap (Weeks 0–2)
+- Establish repos, branching standards, commit signing; CODEOWNERS.
+- Define NFRs/SLOs formally; error budget policy; initial SLO dashboards skeleton.
+- Choose monorepo/polyrepo; set up package management (pnpm/go modules).
+- Author proto governance (Buf) and initial IDL skeletons.
+
+Phase 1: Infra Foundation (Weeks 2–6)
+- CDK stacks: VPC, subnets, NAT, gateways, security baselines.
+- EKS cluster, node groups, mesh (Istio/Linkerd), cert manager, external-dns, ingress gateways.
+- Shared-services: MSK (Kafka), ElastiCache Redis cluster, Aurora Postgres Srvls v2 (dev/stage), S3 buckets, OpenSearch (dev).
+- Observability stack: OTEL collectors, Prometheus/Grafana, Loki/CloudWatch, Tempo/Jaeger/X-Ray; Sentry hookup.
+
+Deliverables:
+- CDK deployable environments (dev/stage).
+- Platform runbooks: deploy, rollback, access, secret rotation.
+
+Phase 2: Identity, Edge, and BFF (Weeks 4–8)
+- identity-svc (Go) with OIDC integration; JWT issuance; RBAC policy model.
+- API Gateway routes; WAF rules; ALB/NLB for gRPC ingress.
+- BFF (Node/TS) patterns and auth middleware; rate limiting and caching headers.
+
+Deliverables:
+- Authenticated HelloWorld across Gateway→BFF→Service with end-to-end tracing and dashboards.
+
+Phase 3: Realtime Gateway (Weeks 6–10)
+- realtime-gateway (Go) with WebSocket clusters; topic auth; NATS JetStream or Kafka backplane; connection/subscription SLIs.
+- Client SDK (TS) for FE: connect, auth, topic subscribe/publish, reconnection/backoff.
+
+Deliverables:
+- WS performance test showing p95 delivery <250ms at target concurrency (dev scale).
+
+Phase 4: Data Plane Primitives (Weeks 6–10)
+- donations-svc, ngos-svc, donors-svc (Go) with Aurora schemas; gRPC + REST; idempotent writes; audit logs.
+- CDC via Debezium → Kafka; OpenSearch indexers for search-svc.
+
+Deliverables:
+- CRUD + search flows with observability and SLOs; k6 baseline load tests.
+
+Phase 5: Optimization Engine and Orchestrator (Weeks 8–14)
+- opt-engine (C++ gRPC) with OR-Tools; objective tuning via config; bounded concurrency; per-job metrics.
+- allocation-orchestrator (Go/Node) to enqueue jobs (SQS/Kafka), poll/consume results; idempotency and audits.
+
+Deliverables:
+- Deterministic e2e allocation run on synthetic dataset; SLA and scaling report.
+
+Phase 6: Orders & Driver Logistics (Weeks 10–16)
+- orders-fulfillment (Go) with saga orchestration; idempotent transitions.
+- driver-logistics (Go) for location ingest, route updates; integrate routing-maps service.
+
+Deliverables:
+- Live demo: allocation → order → pickup flow with live driver updates via realtime gateway.
+
+Phase 7: Frontend Micro-frontend (Weeks 10–18)
+- Shell + remotes: donor-app, ngo-app, driver-app (PWA), admin-app.
+- State and data patterns: React Query v5, Redux Toolkit, error boundaries, retries.
+- Auth integration and WS SDK integration.
+
+Deliverables:
+- End-to-end flows in FE; performance budgets and Core Web Vitals dashboards.
+
+Phase 8: 3D Asset Pipeline (Weeks 12–18)
+- S3 events → Step Functions → containerized workers (Blender CLI, gltfpack, meshoptimizer, KTX2).
+- Store variant tiers (low/med/high); client runtime quality scaler.
+
+Deliverables:
+- Before/after asset size and FPS benchmarks on representative devices.
+
+Phase 9: Search, Analytics, and BI (Weeks 12–20)
+- search-svc with OpenSearch indices; geo/text facets.
+- Analytics: Kafka → Snowflake; BI dashboards; operational KPIs.
+
+Deliverables:
+- Search relevance and latency report; BI MVP dashboards.
+
+Phase 10: Global Scale and DR (Weeks 18–24)
+- Aurora Global Database; cross-region replication; S3 cross-region replication; Kafka multi-region mirroring.
+- DR runbooks and game day testing; RPO/RTO evidence.
+
+Deliverables:
+- DR drill report meeting RPO≤1m and RTO≤15m.
+
+Phase 11: SRE Hardening and Cost (Weeks 20–26)
+- Chaos engineering (pod kills, AZ loss); auto-remediation; PDBs.
+- FinOps dashboards: cost per 1k requests; rightsizing and autoscaling policies.
+
+Deliverables:
+- SLO burn-rate alerts validated; cost baseline and optimization plan.
+
+Phase 12: Go-Live Readiness and Cutover (Weeks 24–28)
+- Performance validation to target RPS and realtime concurrency.
+- Security review, pen test reports; compliance checks.
+- Finalize dashboards and on-call playbooks.
+- DNS cutover plan (Route53; progressive traffic shift); rollback plan.
+
+Deliverables:
+- Go-live sign-offs (Eng, SRE, Security, Product); cutover execution runbook.
+
+SLO/SLI Definitions (Examples)
+- API Availability (30 days):
+  SLI = 1 − (5xx + timeouts + 429)/total_requests; SLO ≥ 99.99%
+- Read Latency:
+  SLI = requests_with_latency≤200ms / total_read_requests; SLO ≥ 99% intra-region
+- WS Channel Availability:
+  SLI = connect_success/attempts × subscribe_success/attempts × delivery_success/attempts; SLO ≥ 99.9%
+- Fanout Latency:
+  SLI = fraction of messages delivered ≤250ms; SLO ≥ 99%
+
+Alerting (Burn-rate)
+- Fast burn: >14× error budget over 5 minutes → page on-call.
+- Medium burn: >6× over 1 hour → page.
+- Slow burn: >2× over 6 hours → ticket and triage.
+
+Security Controls (Concrete)
+- mTLS enforced by mesh; SPIFFE identities.
+- Edge WAF: OWASP top-10, bot detection, geo/rate policies.
+- Secrets: only from Secrets Manager/Vault; rotation every 90 days (or per provider policy).
+- Image supply chain: SBOM generation; cosign signing/verification in admission controller.
+
+CI/CD and DevEx
+- GitHub Actions:
+  - Lint, test (unit/integration/contract), build containers, SBOM, security scans, push to ECR.
+  - CDK synth/deploy with approvals; Argo CD for cluster-level rollout; Argo Rollouts/Flagger for canaries.
+- Local dev:
+  - Tilt/Skaffold for live dev; Docker Compose dev stack; Testcontainers in integration tests.
+
+Acceptance Criteria to Consider Greenfield “Feature-Complete”
+- All Phase 0–9 deliverables met with SLO dashboards green for 7 consecutive days.
+- Performance load tests achieved target p95/p99 latencies and 500k RPS baseline distribution across services.
+- Realtime gateway validated to target concurrency and fanout latencies.
+- DR drill demonstrates RPO≤1m and RTO≤15m; runbooks approved.
+- Security pen test issues triaged and critical/high items remediated.
+- FinOps baseline and cost-per-1k-requests published; exceeds affordability guardrails.
+
+Cutover and Post-Cutover
+- Route53 progressive traffic shift from 0%→100% with automated health checks and rollback.
+- Observe SLOs and error budgets for 72 hours; freeze non-critical deploys.
+- Post-cutover hardening sprint: address observed tail latencies, cache warms, index tuning.
+
+Risks and Mitigations
+- Optimization engine complexity (C++/OR-Tools): keep configurable scenario sizes; provide Python fallback worker during early phases; strict timeouts and job cancellations.
+- Realtime fanout spikes: quotas and topic admission control; overflow to managed provider (Ably/Pusher) as circuit-breaker.
+- Cross-region consistency: prefer per-region strong consistency; asynchronous replication for global aggregates; reconcile via events.
+- 3D asset variance on low-end devices: aggressive LOD and texture size gates; adaptive runtime scaler.
+
+Detailed Backlog (Epics → Tickets)
+
+- EPIC: Infra & Mesh
+  - IM-1: CDK multi-account bootstrap (dev/stage/prod/shared)
+    - DoD: cdk bootstrap completed for all accounts; pipelines assume roles successfully.
+    - Deps: AWS org access.
+  - IM-2: Network foundations (VPC, public/private subnets, NAT, VPC endpoints)
+    - DoD: Per-env VPCs with subnetting documented; endpoints for S3/SM/KMS in place.
+  - IM-3: EKS clusters and managed node groups
+    - DoD: EKS up with autoscaling; cluster-autoscaler installed; PDB defaults defined.
+  - IM-4: Service mesh install (Istio/Linkerd) with mTLS on-by-default
+    - DoD: Sidecar injection enabled; mesh policy enforces mTLS; example service-to-service call verified.
+  - IM-5: Ingress/Egress gateways, cert-manager, external-dns, ACM certs
+    - DoD: Public ingress with TLS; DNS automated; egress policies in place.
+  - IM-6: GitOps bootstrap (Argo CD/Flux) and repo structure
+    - DoD: GitOps syncs base/overlay manifests; environment overlays defined.
+  - IM-7: Progressive delivery (Argo Rollouts/Flagger) with canary
+    - DoD: Sample app canary rollouts with automated metric checks/rollback.
+  - IM-8: ECR repositories, image lifecycle, admission policies
+    - DoD: Repos per service; lifecycle rules; admission policy to block unsigned images.
+
+- EPIC: Observability
+  - OBS-1: OpenTelemetry collectors and exporters (traces/metrics/logs)
+    - DoD: OTEL collectors deployed; traces visible in Tempo/Jaeger; metrics in Prom.
+  - OBS-2: Service SDK instrumentation (Go/Node/C++)
+    - DoD: Common library wrappers; context propagation across gRPC/HTTP.
+  - OBS-3: Prometheus/Grafana stack with dashboards per service
+    - DoD: RED/USE dashboards templated; importable JSON in repo.
+  - OBS-4: Centralized logging (Loki/CloudWatch) with JSON structure and correlation IDs
+    - DoD: Log format contracts; PII redaction filters.
+  - OBS-5: SLO definitions + burn-rate alerting (Alertmanager)
+    - DoD: Availability/latency SLOs per service; 2/6/14× burn alerts live.
+  - OBS-6: Synthetic checks from multiple regions
+    - DoD: Uptime probes for APIs/WS; results on a public internal dashboard.
+  - OBS-7: Runbooks and on-call rotations
+    - DoD: Runbooks in repo; PagerDuty schedules configured.
+
+- EPIC: Identity & Edge
+  - ID-1: Choose and integrate IdP (Cognito/Auth0/Keycloak)
+    - DoD: OIDC flows (PKCE) working; user/role claims minted.
+  - ID-2: identity-svc (Go) for JWT validation/issuance and RBAC/ABAC
+    - DoD: gRPC/REST endpoints; policy engine; audit logging.
+  - ID-3: API Gateway/WAF/Shield edges with routing and rate limiting
+    - DoD: REST/GraphQL routes; WAF rules (OWASP, bot); per-IP/tenant rate limits.
+  - ID-4: BFF bootstrap (Node/TS) with auth middleware and cache headers
+    - DoD: BFF template; token propagation; caching strategy documented.
+  - ID-5: Edge caching and keying strategy
+    - DoD: Cache keys by auth/locale/device; verified hit ratios.
+  - ID-6: Secrets management and KMS integration at edge/BFF
+    - DoD: Secrets from SM only; no plaintext envs; rotation documented.
+
+- EPIC: Core Domain (Donors/NGOs/Donations)
+  - CD-1: OLTP schemas (Aurora) for donors, NGOs, donations
+    - DoD: DDL in repo; migration pipeline; referential integrity; indexes.
+  - CD-2: donors-svc (Go) with CRUD + S3 signed upload
+    - DoD: OpenAPI + protobuf contracts; idempotent POST; audit logs.
+  - CD-3: ngos-svc (Go) with verification/capacity/preferences/geo
+    - DoD: Capacity constraints persisted; geo columns and indexes.
+  - CD-4: donations-svc (Go) lifecycle, inventory/quantity model
+    - DoD: Status machine; partial allocations supported; optimistic locking.
+  - CD-5: CDC via Debezium → Kafka topics
+    - DoD: Topics created; schemas in registry; consumers can replay.
+  - CD-6: search-svc indexers for OpenSearch
+    - DoD: Index templates; reindex/backfill job; query APIs with facets.
+  - CD-7: Contract tests (Pact) for BFF ↔ services
+    - DoD: CI gate failing on breaking changes.
+
+- EPIC: Realtime
+  - RT-1: realtime-gateway (Go) cluster with WS shards and sticky sessions
+    - DoD: Health checks; connection distribution verified.
+  - RT-2: Backplane (NATS JetStream or Kafka) integration
+    - DoD: Topic conventions; retention; consumer groups.
+  - RT-3: Topic authorization and connection tokens
+    - DoD: JWT-scoped topics; server-side authorization hooks.
+  - RT-4: Type-safe client SDK (TS) with reconnect/backoff and presence
+    - DoD: NPM package; samples; E2E tests.
+  - RT-5: Fanout and latency load tests (k6) with targets
+    - DoD: p95 < 250ms achieved in dev scale; dashboards published.
+  - RT-6: Autoscaling and backpressure policies
+    - DoD: HPA on connection/message rates; slow consumer handling documented.
+
+- EPIC: Optimization (Allocation)
+  - OPT-1: allocation.proto and buf build/breaking rules
+    - DoD: Contracts linted; multi-language generation working.
+  - OPT-2: opt-engine (C++ gRPC) container with OR-Tools
+    - DoD: Deterministic results; bounded concurrency; CPU limits.
+  - OPT-3: allocation-orchestrator (Go/Node) with SQS/Kafka job queue
+    - DoD: Idempotent job submission; result aggregation; audits.
+  - OPT-4: Timeouts/cancellations and retries with jitter
+    - DoD: Per-job limits; circuit breaker on overload.
+  - OPT-5: Admin and observability endpoints
+    - DoD: Health, queue depth, solver timings, histograms.
+  - OPT-6: Baseline and stress benchmarks on synthetic datasets
+    - DoD: Report with objective values, throughput, tail latency.
+
+- EPIC: Orders & Driver Logistics
+  - OD-1: Orders schema and state machine (saga)
+    - DoD: Transitions with idempotent keys; compensation paths.
+  - OD-2: orders-fulfillment APIs (create/accept/complete)
+    - DoD: OpenAPI; auth checks; audit logs.
+  - OD-3: driver-logistics ingest (HTTP/WS) + telemetry
+    - DoD: Validations; rate limits; geo-indexed storage strategy.
+  - OD-4: routing-maps abstraction with caching/throttling
+    - DoD: Distance matrix cache; fallback provider; quotas.
+  - OD-5: Realtime updates wiring (order:{id}, driver:{id})
+    - DoD: Subscriptions tested; latency tracked in traces.
+  - OD-6: Operational dashboards and alerts
+    - DoD: KPI panels (on-time pickups, SLA) and alerts.
+
+- EPIC: Frontend Micro-frontend
+  - FE-1: Shell + module federation (or Vite MF) skeletons
+    - DoD: Container app consumes donor/ngo/driver/admin remotes.
+  - FE-2: Design system and component library
+    - DoD: Versioned DS; storybook; accessibility checks.
+  - FE-3: Auth flows (OIDC PKCE) and token refresh
+    - DoD: Silent refresh; logout everywhere; role-based routing.
+  - FE-4: Data patterns (React Query v5) and error/retry policies
+    - DoD: Query clients; caching strategies; suspense integration.
+  - FE-5: Realtime client integration with presence and topic ACLs
+    - DoD: Hooks/utilities; reconnection tests; offline handling.
+  - FE-6: Performance budgets and Core Web Vitals monitoring
+    - DoD: Budgets enforced in CI; CWV dashboard in Grafana.
+
+- EPIC: 3D Asset Pipeline
+  - THREE-1: S3 buckets, prefixes, lifecycle, and IAM
+    - DoD: Versioned paths; public delivery via CloudFront; private uploads via presign.
+  - THREE-2: Step Functions workflow orchestration
+    - DoD: States for convert→optimize→encode→validate→publish with retries/DLQ.
+  - THREE-3: Blender CLI container and convert job (FBX→GLB)
+    - DoD: Deterministic CLI; resource limits; sample conversion proven.
+  - THREE-4: gltfpack/meshoptimizer job
+    - DoD: Geometry compression verified; size reports stored.
+  - THREE-5: KTX2/BasisU texture pipeline with mipmaps
+    - DoD: GPU-friendly textures; device matrix tested.
+  - THREE-6: Validation and publishing with variant tiers
+    - DoD: LOD tiers (low/med/high) and mobile variants live; CDN cache policies set.
+  - THREE-7: Runtime quality selector in FE
+    - DoD: Device/profile heuristics; user override; analytics on FPS.
+
+- EPIC: Global & DR
+  - GDR-1: Aurora Global Database and replicas
+    - DoD: Cross-region replication; failover tested.
+  - GDR-2: Kafka mirroring/MRC or multi-cluster replication
+    - DoD: Topic parity; lag dashboards; failover drill.
+  - GDR-3: S3 cross-region replication and bucket policies
+    - DoD: Replication status monitored; encryption preserved.
+  - GDR-4: DR runbooks and game day
+    - DoD: RPO ≤ 1m and RTO ≤ 15m achieved in drill.
+  - GDR-5: Traffic policies and health checks (Route53)
+    - DoD: Failover routing; brownout plans documented.
+
+- EPIC: Security & Compliance
+  - SEC-1: WAF policies and bot control
+    - DoD: Managed rules + custom; false-positive review process.
+  - SEC-2: mTLS everywhere via mesh with SPIFFE IDs
+    - DoD: Policy enforcement; cert rotation tested.
+  - SEC-3: Secrets in SM/Vault with rotation
+    - DoD: No plaintext secrets; rotation pipeline.
+  - SEC-4: SAST/DAST and dependency/image scanning
+    - DoD: CodeQL/ZAP/Trivy/Grype in CI; failing gates configured.
+  - SEC-5: SBOM + cosign signing and admission controller verify
+    - DoD: Images signed; admission blocks unsigned/untrusted.
+  - SEC-6: Audit logging and SoD
+    - DoD: Immutable logs; admin actions recorded; periodic access reviews.
+
+- EPIC: FinOps
+  - FIN-1: Cost allocation tags and org tagging policy
+    - DoD: Tag coverage ≥ 95% across resources.
+  - FIN-2: Cost dashboards (service/env) and anomaly alerts
+    - DoD: Cost per 1k requests panel; anomaly thresholds alert.
+  - FIN-3: Autoscaling and rightsizing policies
+    - DoD: HPA/VPA tuned; savings from rightsizing measured.
+  - FIN-4: Egress optimization (CDN, regionalization)
+    - DoD: Egress baseline vs optimized report; policies applied.
+  - FIN-5: Performance-per-cost experiments
+    - DoD: Instance family trials documented; chosen defaults recorded.
+  - FIN-6: Budget alarms and monthly review cadences
+    - DoD: Budgets per env; review process in runbook.
+
+Appendix A – Protobuf Sketch (allocation.proto)
+syntax = "proto3";
+package allocation.v1;
+
+message NGO { int64 id = 1; double storage_capacity = 2; double latitude = 3; double longitude = 4; int32 priority_level = 5; repeated string food_preferences = 6; }
+message FoodDonation { int64 id = 1; double remaining_quantity = 2; string food_type = 3; double latitude = 4; double longitude = 5; int64 expiration_epoch_ms = 6; }
+message AllocationRequest { repeated NGO ngos = 1; repeated FoodDonation foods = 2; string strategy_version = 3; }
+message Allocation { int64 ngo_id = 1; int64 food_donation_id = 2; double allocated_quantity = 3; }
+message AllocationResponse { string status = 1; double objective_value = 2; repeated Allocation allocations = 3; }
+service OptimizationEngine { rpc Solve (AllocationRequest) returns (AllocationResponse); }
+
+Appendix B – Kafka Topics (Illustrative)
+- user.created, donor.verified, donation.created/updated, allocation.requested/completed, order.created/status_changed, driver.location.updated, search.index.update, notification.sent
+
+Appendix C – 3D Tooling Commands
+- Blender: blender -b -P convert.py -- input.fbx output.glb
+- gltfpack: gltfpack -i in.glb -o out.glb -cc -kn -tc -vt -mi
+- ktx2/basisu: texture compression pipeline; generate mipmaps
+- Validation: glTF-Validator in CI
+
+Appendix D – SLO Dashboards (Key Panels)
+- Availability & error budget burn, latency percentiles (p50/p95/p99), queue depths, Kafka consumer lag, DB connections & saturation, cache hit ratio, WS connection counts & fanout latency, FE Core Web Vitals
+
+End of document.
